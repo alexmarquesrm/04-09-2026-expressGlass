@@ -7,7 +7,7 @@ Companion to [expressglass-task.md](expressglass-task.md) (the general idea/deci
 ## 1. Directory tree
 
 ```
-expressglass-challenge/
+(repo root)
 ├── CLAUDE.md                    ← project context for Claude Code
 ├── .mcp.json                    ← Context7 + Serena MCP config
 ├── docker-compose.yml
@@ -177,9 +177,9 @@ Requires `uv`/`uvx` installed locally for Serena. Exact args to confirm against 
 
 ## 7. Build order (milestones)
 
-1. **M0 — Scaffold:** repo skeleton, `docker-compose.yml`, Dockerfiles, `.mcp.json`, `CLAUDE.md`, agent files, DB migration `001`.
-2. **M1 — Backend core:** `tasks` CRUD API + a few tests, running against Dockerized Postgres.
-3. **M2 — Frontend core:** create-task form + list view wired to the API.
+1. **M0 — Scaffold ✅:** repo skeleton, `docker-compose.yml`, Dockerfiles, `.mcp.json`, `CLAUDE.md`, agent files, DB migration `001`.
+2. **M1 — Backend core ✅ verified:** `tasks` CRUD API implemented and confirmed live via `docker compose up` (create/list/get/patch/delete/404 all exercised with curl against real Postgres). One enum-cast bug found and fixed in the process — see `prompts-file.md` Entry 1. Still needs real automated tests (currently a placeholder in `backend/tests/tasks.test.js`).
+3. **M2 — Frontend core ✅ verified:** Vite dev server confirmed serving on `:5173`; create-task form + list view wired to the API (not yet click-tested in an actual browser).
 4. **M3 — Report discipline check:** confirm `prompts-file.md` has been kept up to date so far; start drafting `RELATORIO.md`.
 5. **M4 — Chatbot extension:** `/api/chat`, tool definitions, `llm.service.js`, migrations `002`/`003`.
 6. **M5 — Feature roadmap:** confirmation-before-destructive-action, audit trail, tags/priority, NL due dates — in that order, stopping whenever time runs out.
