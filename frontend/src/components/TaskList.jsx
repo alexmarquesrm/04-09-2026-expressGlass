@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import ConfirmDialog from './ConfirmDialog.jsx';
 
+const PRIORITY_LABELS = { low: 'Baixa', medium: 'Média', high: 'Alta' };
+
 function CheckIcon() {
   return (
     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#ffffff" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round">
@@ -78,21 +80,21 @@ function EditRow({ task, onSave, onCancel }) {
   return (
     <div className="task-row" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 8 }}>
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-        <input className="field-sm" style={{ flex: '1 1 180px' }} value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Title" />
+        <input className="field-sm" style={{ flex: '1 1 180px' }} value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Título" />
         <select className="field-sm" value={priority} onChange={(e) => setPriority(e.target.value)}>
-          <option value="low">Low</option>
-          <option value="medium">Medium</option>
-          <option value="high">High</option>
+          <option value="low">Baixa</option>
+          <option value="medium">Média</option>
+          <option value="high">Alta</option>
         </select>
         <input className="field-sm" type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
       </div>
-      <input className="field-sm" value={tagsText} onChange={(e) => setTagsText(e.target.value)} placeholder="Tags, comma separated" />
+      <input className="field-sm" value={tagsText} onChange={(e) => setTagsText(e.target.value)} placeholder="Etiquetas, separadas por vírgula" />
       <div style={{ display: 'flex', gap: 8 }}>
         <button type="button" className="btn-primary" style={{ padding: '6px 14px', fontSize: 13 }} onClick={handleSave} disabled={saving}>
-          Save
+          Guardar
         </button>
         <button type="button" className="field-sm" style={{ background: 'transparent', cursor: 'pointer' }} onClick={onCancel} disabled={saving}>
-          Cancel
+          Cancelar
         </button>
       </div>
     </div>
@@ -107,8 +109,8 @@ export default function TaskList({ tasks, onToggleStatus, onUpdate, onDelete }) 
     return (
       <div className="card" style={{ padding: '64px 20px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, textAlign: 'center' }}>
         <EmptyIcon />
-        <div style={{ fontSize: 15, fontWeight: 600 }}>No tasks yet</div>
-        <div style={{ fontSize: 13, color: 'var(--color-muted)' }}>Add your first task above to get started.</div>
+        <div style={{ fontSize: 15, fontWeight: 600 }}>Ainda não há tarefas</div>
+        <div style={{ fontSize: 13, color: 'var(--color-muted)' }}>Adicione a primeira tarefa acima para começar.</div>
       </div>
     );
   }
@@ -127,9 +129,10 @@ export default function TaskList({ tasks, onToggleStatus, onUpdate, onDelete }) 
     <div className="card">
       {pendingDelete && (
         <ConfirmDialog
-          title="Delete task?"
-          message={`"${pendingDelete.title}" will be permanently deleted. This can't be undone.`}
-          confirmLabel="Delete"
+          title="Eliminar tarefa?"
+          message={`"${pendingDelete.title}" será eliminada permanentemente. Esta ação não pode ser revertida.`}
+          confirmLabel="Eliminar"
+          cancelLabel="Cancelar"
           onConfirm={handleConfirmDelete}
           onCancel={() => setPendingDelete(null)}
         />
@@ -146,7 +149,7 @@ export default function TaskList({ tasks, onToggleStatus, onUpdate, onDelete }) 
               type="button"
               className={`task-checkbox${completed ? ' completed' : ''}`}
               onClick={() => onToggleStatus(task)}
-              aria-label={completed ? 'Mark as pending' : 'Mark as completed'}
+              aria-label={completed ? 'Marcar como pendente' : 'Marcar como concluída'}
             >
               {completed && <CheckIcon />}
             </button>
@@ -155,14 +158,14 @@ export default function TaskList({ tasks, onToggleStatus, onUpdate, onDelete }) 
                 <span style={{ fontSize: 15, fontWeight: 600, color: completed ? 'var(--color-muted)' : 'var(--color-text)', textDecoration: completed ? 'line-through' : 'none' }}>
                   {task.title}
                 </span>
-                <span className={`badge-priority ${task.priority}`}>{task.priority}</span>
+                <span className={`badge-priority ${task.priority}`}>{PRIORITY_LABELS[task.priority] || task.priority}</span>
               </div>
               {(task.due_date || (task.tags && task.tags.length > 0)) && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
                   {task.due_date && (
                     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, color: 'var(--color-muted)' }}>
                       <CalendarIcon />
-                      {new Date(task.due_date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                      {new Date(task.due_date).toLocaleDateString('pt-PT', { month: 'short', day: 'numeric' })}
                     </span>
                   )}
                   {(task.tags || []).map((tag) => (
@@ -174,10 +177,10 @@ export default function TaskList({ tasks, onToggleStatus, onUpdate, onDelete }) 
               )}
             </div>
             <div className="task-actions">
-              <button type="button" className="icon-btn" aria-label="Edit task" onClick={() => setEditingId(task.id)}>
+              <button type="button" className="icon-btn" aria-label="Editar tarefa" onClick={() => setEditingId(task.id)}>
                 <PencilIcon />
               </button>
-              <button type="button" className="icon-btn danger" aria-label="Delete task" onClick={() => setPendingDelete(task)}>
+              <button type="button" className="icon-btn danger" aria-label="Eliminar tarefa" onClick={() => setPendingDelete(task)}>
                 <TrashIcon />
               </button>
             </div>

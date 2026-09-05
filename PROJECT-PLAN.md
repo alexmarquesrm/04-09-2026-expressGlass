@@ -34,8 +34,9 @@ Reflects what actually exists as of M2 close-out; `(planned)` marks files that d
 │   │   │   ├── migrate.js
 │   │   │   └── migrations/
 │   │   │       ├── 001_create_tasks.sql
-│   │   │       ├── 002_create_automations.sql   (planned — M4)
-│   │   │       └── 003_create_audit_log.sql     (planned — M4)
+│   │   │       ├── 002_seed_demo_tasks.sql
+│   │   │       ├── 003_create_automations.sql   (planned — M4)
+│   │   │       └── 004_create_audit_log.sql     (planned — M4)
 │   │   ├── routes/
 │   │   │   ├── tasks.routes.js
 │   │   │   └── chat.routes.js                    (planned — M4)
@@ -98,7 +99,14 @@ CREATE TABLE tasks (
   updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- 002_create_automations.sql
+-- 002_seed_demo_tasks.sql
+INSERT INTO tasks (title, status, priority, due_date, tags) VALUES
+  ('Escrever o RELATORIO.md', 'pending', 'high', '2026-09-08', '{relatorio}'),
+  ('Ligar o endpoint /api/chat', 'pending', 'medium', '2026-09-12', '{backend,chatbot}'),
+  ('Rever a interface no browser', 'completed', 'low', NULL, '{}'),
+  ('Rever o pull request antes da entrega', 'pending', 'medium', '2026-09-15', '{revisao}');
+
+-- 003_create_automations.sql (planned — M4)
 CREATE TABLE automations (
   id          SERIAL PRIMARY KEY,
   trigger     TEXT NOT NULL,
@@ -106,7 +114,7 @@ CREATE TABLE automations (
   created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- 003_create_audit_log.sql
+-- 004_create_audit_log.sql (planned — M4)
 CREATE TABLE audit_log (
   id          SERIAL PRIMARY KEY,
   source      TEXT NOT NULL DEFAULT 'chat',
@@ -229,9 +237,9 @@ One commit per completed-and-reviewed milestone (see Build order below), not one
 
 1. **M0 — Scaffold ✅:** repo skeleton, `docker-compose.yml`, Dockerfiles, `.mcp.json`, `CLAUDE.md`, agent files, DB migration `001`.
 2. **M1 — Backend core ✅ verified + reviewed:** `tasks` CRUD API implemented and confirmed live via `docker compose up` (create/list/get/patch/delete/404 all exercised with curl against real Postgres). Enum-cast bug found and fixed (`prompts-file.md` Entry 1). Went through a Security + Review-QA subagent pass afterward: added `backend/src/utils/validation.js`, normalized error responses to stop leaking raw Postgres errors, and replaced the placeholder test with 14 real unit + integration tests, all passing against live Postgres (`prompts-file.md` Entry 2).
-3. **M2 — Frontend core ✅ verified + reviewed + styled + click-tested:** Vite dev server confirmed serving on `:5173`. Design mockup drafted (section 7) and implemented into the real app: global stylesheet, create form (title/priority/due date), status-toggle checkbox, priority badges, due dates, tag pills, empty state. Extended beyond the mockup with: a two-route split (`/` Tasks, `/assistant` a labeled M4 placeholder) via `react-router-dom` so future features don't crowd the core page; a full inline edit UI per task (title/priority/due date/tags) and a delete action behind a styled `ConfirmDialog`, since update/delete are treated as required here (section 3). Actually click-tested via a headless Playwright browser (not just curl) — screenshots confirmed visual fidelity to the mockup, and a scripted run drove real edit-save and delete-confirm clicks through the UI, verifying the changes landed in Postgres.
+3. **M2 — Frontend core ✅ verified + reviewed + styled + click-tested:** Vite dev server confirmed serving on `:5173`. Design mockup drafted (section 7) and implemented into the real app: global stylesheet, create form (title/priority/due date), status-toggle checkbox, priority badges, due dates, tag pills, empty state. Extended beyond the mockup with: a two-route split (`/` Tasks, `/assistant` a labeled M4 placeholder) via `react-router-dom` so future features don't crowd the core page; a full inline edit UI per task (title/priority/due date/tags) and a delete action behind a styled `ConfirmDialog`, since update/delete are treated as required here (section 3). Actually click-tested via a headless Playwright browser (not just curl) — screenshots confirmed visual fidelity to the mockup, and a scripted run drove real edit-save and delete-confirm clicks through the UI, verifying the changes landed in Postgres. Later extended with client-side status/priority filter dropdowns (`TaskFilters.jsx`) and a full Portuguese UI pass (all labels, badges, empty state, error messages, `<html lang="pt">`, `pt-PT` date formatting) — a deliberate choice given the exercise brief itself is Portuguese in origin.
 4. **M3 — Report discipline check ✅:** `prompts-file.md` confirmed up to date (3 entries); `RELATORIO.md` drafted (bilingual EN/PT, matching `README.md`'s convention), distilling the 3 strongest prompt-log entries plus the required tools/models, accepted-vs-corrected breakdown, and the enum-cast SQL bug as the "AI mistake caught" example.
-5. **M4 — Chatbot extension:** `/api/chat`, tool definitions, `llm.service.js`, migrations `002`/`003`.
+5. **M4 — Chatbot extension:** `/api/chat`, tool definitions, `llm.service.js`, migrations `003`/`004`.
 6. **M5 — Feature roadmap:** confirmation-before-destructive-action, audit trail, tags/priority, NL due dates — in that order, stopping whenever time runs out.
 7. **M6 — Polish:** final README pass, Security/Review-QA agent pass, finish `RELATORIO.md`.
 

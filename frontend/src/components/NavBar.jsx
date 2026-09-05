@@ -14,10 +14,10 @@ export default function NavBar() {
   return (
     <nav style={{ display: 'flex', gap: 6, padding: 4, background: 'var(--color-surface)', border: '1px solid var(--color-border)', borderRadius: 999, width: 'fit-content' }}>
       <NavLink to="/" end style={linkStyle}>
-        Tasks
+        Tarefas
       </NavLink>
       <NavLink to="/assistant" style={linkStyle}>
-        Assistant
+        Assistente
       </NavLink>
     </nav>
   );

@@ -1,11 +1,14 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { fetchTasks, createTask, updateTask, deleteTask } from '../api/tasks';
 import TaskForm from '../components/TaskForm.jsx';
+import TaskFilters from '../components/TaskFilters.jsx';
 import TaskList from '../components/TaskList.jsx';
 
 export default function TasksPage() {
   const [tasks, setTasks] = useState([]);
   const [error, setError] = useState(null);
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [priorityFilter, setPriorityFilter] = useState('all');
 
   async function loadTasks() {
     try {
@@ -19,6 +22,14 @@ export default function TasksPage() {
   useEffect(() => {
     loadTasks();
   }, []);
+
+  const filteredTasks = useMemo(() => {
+    return tasks.filter((task) => {
+      const statusMatch = statusFilter === 'all' || task.status === statusFilter;
+      const priorityMatch = priorityFilter === 'all' || task.priority === priorityFilter;
+      return statusMatch && priorityMatch;
+    });
+  }, [tasks, statusFilter, priorityFilter]);
 
   async function handleCreate(task) {
     try {
@@ -66,12 +77,13 @@ export default function TasksPage() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-        <h1 style={{ margin: 0, fontSize: 26, fontWeight: 800, letterSpacing: '-0.01em' }}>ExpressGlass Tasks</h1>
-        <p style={{ margin: 0, fontSize: 14, color: 'var(--color-muted)' }}>Track what needs doing — add a task and check it off.</p>
+        <h1 style={{ margin: 0, fontSize: 26, fontWeight: 800, letterSpacing: '-0.01em' }}>Tarefas ExpressGlass</h1>
+        <p style={{ margin: 0, fontSize: 14, color: 'var(--color-muted)' }}>Acompanhe o que precisa de ser feito — adicione uma tarefa e marque-a como concluída.</p>
       </div>
       {error && <p style={{ color: '#b91c1c', margin: 0 }}>{error}</p>}
       <TaskForm onCreate={handleCreate} />
-      <TaskList tasks={tasks} onToggleStatus={handleToggleStatus} onUpdate={handleUpdate} onDelete={handleDelete} />
+      <TaskFilters status={statusFilter} onStatusChange={setStatusFilter} priority={priorityFilter} onPriorityChange={setPriorityFilter} />
+      <TaskList tasks={filteredTasks} onToggleStatus={handleToggleStatus} onUpdate={handleUpdate} onDelete={handleDelete} />
     </div>
   );
 }

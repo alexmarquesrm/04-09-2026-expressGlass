@@ -1,4 +1,4 @@
-export default function ConfirmDialog({ title, message, confirmLabel = 'Confirm', onConfirm, onCancel }) {
+export default function ConfirmDialog({ title, message, confirmLabel = 'Confirm', cancelLabel = 'Cancel', onConfirm, onCancel }) {
   return (
     <div className="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="confirm-dialog-title" onClick={onCancel}>
       <div className="modal-card" onClick={(e) => e.stopPropagation()}>
@@ -10,7 +10,7 @@ export default function ConfirmDialog({ title, message, confirmLabel = 'Confirm'
         </div>
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
           <button type="button" className="btn-secondary" onClick={onCancel}>
-            Cancel
+            {cancelLabel}
           </button>
           <button type="button" className="btn-danger" onClick={onConfirm} autoFocus>
             {confirmLabel}

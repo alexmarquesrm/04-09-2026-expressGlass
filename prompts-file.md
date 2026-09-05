@@ -139,3 +139,43 @@ The brief marks edit/delete as bonus, but building only the backend for them (al
 
 **AI mistake or oddity noticed?**
 The stale-HMR bug above is the clearest example: the code was correct on disk the whole time, but the running app kept serving an old version, which would have looked like "the AI's new code doesn't work" if not for checking the actual served bytes (`curl .../TaskList.jsx | grep ...`) rather than trusting a browser screenshot alone — the screenshot would have just shown the old UI with no error to explain why. This is the second Vite/Docker networking quirk found this session (`allowedHosts` in Entry 4 was the first) — both were invisible from reading the code and only surfaced by actually exercising the running containers.
+
+---
+
+### Entry 6 — filters + full Portuguese UI pass — 2026-09-05
+
+**Prompt (exact):**
+> now add a filter dropdown for priority, marked as done
+> after that make the website in portuguese clean up the tasks and add 3 or 4 in portuguese too
+
+**Result obtained (summary):**
+Added client-side status/priority filter dropdowns (`TaskFilters.jsx`, filtering the already-fetched task list in memory rather than adding new backend query params — simple and proportionate given the dataset size). Then translated every user-facing string in the frontend to Portuguese: page/nav text, form labels and placeholders, priority badge labels (mapped from the English enum values stored in the DB, which stayed unchanged), empty state, error messages, the confirm dialog, and the Assistant placeholder page — plus `<html lang="pt">` and `pt-PT` date formatting. Deleted the leftover test-data tasks from earlier verification runs and created 4 fresh tasks with Portuguese titles/tags.
+
+**Accepted / Corrected / Rejected:**
+Accepted directly — this was a well-scoped, unambiguous request. No corrections needed; verified via a scripted Playwright run that both filters actually narrow the list correctly (1 result for a high-priority filter, 1 for a completed-status filter, matching the seeded data) and that the Assistant page renders in Portuguese too, not just the main task page.
+
+**Why:**
+The exercise brief itself is a Portuguese-origin assignment; presenting the demo in Portuguese is a small, low-risk touch that makes the delivery land better for the actual reviewer, and the filters directly improve usability once there's more than a couple of tasks in the list.
+
+**AI mistake or oddity noticed?**
+None this round — a clean, verified pass with no surprises, worth noting in the report precisely because not every entry needs to be a caught mistake.
+
+---
+
+### Entry 7 — seed migration + README run instructions — 2026-09-05
+
+**Prompt (exact):**
+> add pre-added tasks to the docker run file
+> on the readme update the end of the file to show how to run the docker and explain it
+
+**Result obtained (summary):**
+Turned the 4 manually-created Portuguese demo tasks into a real migration (`002_seed_demo_tasks.sql`) so any fresh `docker compose up` seeds them automatically, instead of the app starting empty. Verified this properly: deleted the manual duplicates, then did a full `docker compose down -v` + `up` (wiping the Postgres volume entirely) to prove the seed runs correctly on a genuinely clean database, not just on the already-warmed one — confirmed via the API, the frontend still serving, and the full 14-test suite still passing. Added a bilingual "Running it" section to the end of `README.md` explaining what each of the three `docker compose` services does and what happens on first start.
+
+**Accepted / Corrected / Rejected:**
+Accepted as-is. The one judgment call was renumbering the *planned* (not yet built) chatbot migrations from `002`/`003` to `003`/`004` in `PROJECT-PLAN.md` to make room for the new seed migration at `002` — a small consistency fix so the plan doc doesn't silently drift from the real migration filenames on disk.
+
+**Why:**
+A reviewer's first `docker compose up` showing an empty task list is a worse first impression than one with realistic sample data already in place; testing against a wiped volume (not just a restart) was necessary because a restart alone can't prove the seed logic works from a truly fresh clone, which is the actual scenario that matters.
+
+**AI mistake or oddity noticed?**
+None — straightforward, verified end-to-end.
