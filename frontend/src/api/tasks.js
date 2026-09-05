@@ -15,3 +15,13 @@ export async function createTask(task) {
   if (!res.ok) throw new Error('Failed to create task');
   return res.json();
 }
+
+export async function updateTask(id, fields) {
+  const res = await fetch(`${API_BASE}/api/tasks/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(fields),
+  });
+  if (!res.ok) throw new Error('Failed to update task');
+  return res.json();
+}

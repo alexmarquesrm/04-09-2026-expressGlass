@@ -120,6 +120,8 @@ Ordered by signal-to-effort ratio — 1 and 2 are treated as near-free must-have
 4. **Natural-language due dates** ("tomorrow", "next Friday") parsed by the LLM into a real date — small, flashy, cheap.
 5. **Basic AI-assisted tests** for the API, explicitly logged in `prompts-file.md` as a "what I reviewed and corrected" example — strengthens the report without much build time.
 
+**Stretch tier (post-take-home ambition, only if 1-5 are done and time genuinely allows):** a Trello-style evolution of the app — multiple boards, drag-and-drop between status columns, user accounts/auth, assigning tasks to specific people, and per-board permissions (who can view/edit a given board). This is a materially larger build than the take-home brief asks for (auth + multi-tenancy alone is a significant chunk of work), so it's tracked here as direction, not a commitment — the core simple task list stays the actual deliverable regardless of whether any of this gets built.
+
 ---
 
 ## 5. Open next steps
