@@ -57,8 +57,9 @@ project/
 **MCPs to use:**
 - **[Context7](https://github.com/upstash/context7)** — pulls up-to-date documentation for React/TS/Node/Express/pg/Anthropic SDK on demand, so agents don't suggest deprecated APIs. Solves *knowledge staleness*.
 - **[Serena](https://github.com/oraios/serena)** — LSP-backed semantic code toolkit: symbol-level navigation and edits ("find all references to `createTask`", "go to definition") instead of raw-text grepping. Solves *code navigation*, and pays off as soon as the codebase has more than a couple of files. Trade-off: needs a language server + `uv`/Python installed locally — worth setting up once at project start rather than mid-build. Gives the Dev/Security/Review agents more precise, cheaper (fewer tokens) lookups and cleaner diffs.
+- **[Playwright MCP](https://playwright.dev/docs/getting-started-mcp)** — drives a real (headless) browser: navigate, click, fill forms, screenshot. Solves *verifying the UI actually renders and works*, not just that it compiles. Before this was added, confirming the frontend visually required improvising a one-off Playwright script run inside a throwaway Docker container (see `prompts-file.md`) — this MCP replaces that with a supported, repeatable path for the Dev/Review-QA agents to check real rendered output, not just code.
 
-Both are complementary (docs freshness vs. code navigation), so both go in `.mcp.json` at project root — see [PROJECT-PLAN.md](PROJECT-PLAN.md) for the config.
+All three are complementary (docs freshness / code navigation / live UI verification), so all go in `.mcp.json` at project root — see [PROJECT-PLAN.md](PROJECT-PLAN.md) for the config.
 
 **Prompt logging discipline:**
 Keep a separate [prompts-file.md](prompts-file.md), filled in real time (exact prompt → summarized response → accepted/rejected and why), so there's no need to reconstruct it from memory at the end. At the end, pick the 2-3 best examples for the final `RELATORIO.md`.

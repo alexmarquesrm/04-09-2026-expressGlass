@@ -99,3 +99,22 @@ The user explicitly asked for a design step before implementation rather than st
 
 **AI mistake or oddity noticed?**
 Mid-task, the user asked to pivot the mockup into a full Trello-style product (multiple boards, drag-and-drop, auth, task assignment, board permissions) plus reiterated the chatbot extension. This would have been a large, undiscussed scope expansion contradicting `CLAUDE.md`'s explicit scope note ("core is non-negotiable... chatbot and roadmap are additive") and the project's own prior scoping decisions. Rather than just building it, stopped and asked whether this was meant for the mockup only, as new real scope, or as an incremental roadmap addition — the user chose the roadmap option, confirming the core submission should stay the simple task list. Logged as a case where pausing to check scope against documented decisions, instead of executing a request literally, was the right call.
+
+---
+
+### Entry 4 — routing split + visual verification — 2026-09-05
+
+**Prompt (exact):**
+> use the mockup from early to improve the UI, and let that be a diferent page from rest thats coming after separate so that i can show it
+
+**Result obtained (summary):**
+Added `react-router-dom` and split the frontend into two routes: `/` (the existing Tasks page) and `/assistant` (a clearly-labeled "coming in M4" placeholder for the chatbot extension), with a small pill-style nav bar, so the polished core UI stays demoable on its own without future features landing on the same page. To actually confirm the result rather than trust curl alone, ran a headless Playwright script inside a throwaway `mcr.microsoft.com/playwright` Docker container (no `chromium-cli` or local Node available) attached to the same compose network, screenshotting both routes.
+
+**Accepted / Corrected / Rejected:**
+Accepted the routing/nav structure and the visual result after reviewing the screenshots — layout, colors, and typography matched the published mockup closely. Corrected a real bug the screenshot attempt surfaced: the frontend container couldn't be reached by its compose service name (`frontend:5173`) from another container — Vite's dev server has a Host-header allowlist (DNS-rebinding protection) that silently 403'd requests whose `Host` header wasn't `localhost`. Fixed by adding `allowedHosts: ['localhost', 'frontend']` to `vite.config.js`.
+
+**Why:**
+The user asked to actually see it, not just be told it was implemented — matches the codebase's own guidance (CLAUDE.md: verify UI changes in a browser before reporting complete, not just via type-checking).
+
+**AI mistake or oddity noticed?**
+The `vite.config.js` written back at M0 scaffolding (`host: true`) looked complete at the time but didn't anticipate that anything other than the host machine's browser would ever need to reach the dev server — a reasonable gap for a single-machine take-home app, but it silently broke the first attempt at automated, container-based visual verification with an unhelpful 403 and no clear error message in the response body. Caught only by manually curling the URL with the same Host header Playwright would send, isolating it from the Playwright script itself. Also added the official Playwright MCP (`.mcp.json`) as a follow-up, since it replaces this improvised Docker+Playwright workaround with a supported path for future UI checks.

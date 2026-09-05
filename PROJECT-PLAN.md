@@ -153,12 +153,16 @@ NODE_ENV=development
     "serena": {
       "command": "uvx",
       "args": ["--from", "git+https://github.com/oraios/serena", "serena", "start-mcp-server", "--project", "."]
+    },
+    "playwright": {
+      "command": "npx",
+      "args": ["@playwright/mcp@latest"]
     }
   }
 }
 ```
 
-Requires `uv`/`uvx` installed locally for Serena. Exact args to confirm against Serena's current README when we scaffold (project mode vs. context flags may have changed).
+Requires `uv`/`uvx` installed locally for Serena. Exact args to confirm against Serena's current README when we scaffold (project mode vs. context flags may have changed). Playwright MCP ([docs](https://playwright.dev/docs/getting-started-mcp)) needs Node/npx available wherever Claude Code runs — gives agents real browser navigation/click/fill/screenshot instead of only static code reading.
 
 ---
 
