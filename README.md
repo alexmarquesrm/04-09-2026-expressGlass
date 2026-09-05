@@ -8,7 +8,7 @@ A small full-stack task-management app built as the technical take-home exercise
 
 **Stack:** Node.js (Express) + PostgreSQL + React.
 
-See [expressglass-task.md](expressglass-task.md) for the full exercise brief and the detailed approach (subagent setup, MCPs, optional chatbot extension), [PROJECT-PLAN.md](PROJECT-PLAN.md) for the concrete build structure, and [prompts-file.md](prompts-file.md) for the running AI-prompt log.
+See [expressglass-task.md](expressglass-task.md) for the full exercise brief and the detailed approach (subagent setup, MCPs, optional chatbot extension), [PROJECT-PLAN.md](PROJECT-PLAN.md) for the concrete build structure, [prompts-file.md](prompts-file.md) for the running AI-prompt log, and [RELATORIO.md](RELATORIO.md) for the process report.
 
 ---
 
@@ -20,4 +20,4 @@ Uma pequena aplicação full-stack de gestão de tarefas, construída como desaf
 
 **Stack:** Node.js (Express) + PostgreSQL + React.
 
-Ver [expressglass-task.md](expressglass-task.md) para o enunciado completo e a abordagem detalhada (setup de subagentes, MCPs, extensão opcional de chatbot), [PROJECT-PLAN.md](PROJECT-PLAN.md) para a estrutura concreta de construção, e [prompts-file.md](prompts-file.md) para o registo contínuo de prompts de IA.
+Ver [expressglass-task.md](expressglass-task.md) para o enunciado completo e a abordagem detalhada (setup de subagentes, MCPs, extensão opcional de chatbot), [PROJECT-PLAN.md](PROJECT-PLAN.md) para a estrutura concreta de construção, [prompts-file.md](prompts-file.md) para o registo contínuo de prompts de IA, e [RELATORIO.md](RELATORIO.md) para o relatório do processo.
