@@ -118,3 +118,24 @@ The user asked to actually see it, not just be told it was implemented — match
 
 **AI mistake or oddity noticed?**
 The `vite.config.js` written back at M0 scaffolding (`host: true`) looked complete at the time but didn't anticipate that anything other than the host machine's browser would ever need to reach the dev server — a reasonable gap for a single-machine take-home app, but it silently broke the first attempt at automated, container-based visual verification with an unhelpful 403 and no clear error message in the response body. Caught only by manually curling the URL with the same Host header Playwright would send, isolating it from the Playwright script itself. Also added the official Playwright MCP (`.mcp.json`) as a follow-up, since it replaces this improvised Docker+Playwright workaround with a supported path for future UI checks.
+
+---
+
+### Entry 5 — update/delete UI, styled confirm dialog, and a stale-HMR bug — 2026-09-05
+
+**Prompt (exact):**
+> update or delete task is a must, check every steps missing from the project plan and update if missing
+
+(followed shortly by: "update the confirm delete dialog/alert UI")
+
+**Result obtained (summary):**
+Added a full edit UI per task (inline title/priority/due-date/tags form, wired to the existing `PATCH` endpoint) and a delete action, initially behind the browser's native `window.confirm`. The user asked for that native alert to be replaced, so it became a proper styled `ConfirmDialog.jsx` component matching the app's design tokens. Then audited `PROJECT-PLAN.md` in full against the actual repository contents (directory tree, API contract, Docker section, milestone tracker) and corrected several places where it had drifted from reality — including a leftover `.ts`/`.tsx` directory tree from before the project settled on plain JS.
+
+**Accepted / Corrected / Rejected:**
+Accepted the new edit/delete UI and the confirm-dialog replacement. Corrected a real bug found while verifying it with a scripted Playwright click-through: the new UI code wasn't showing up in the running app at all — `curl`ing the dev server's own module endpoint proved the served JS was stale even after editing the file on disk. Root cause: Vite's file watcher (chokidar) doesn't reliably receive native filesystem change events across the Windows-host-to-Docker-bind-mount boundary, so it missed the edits. Fixed with `server.watch: { usePolling: true }` in `vite.config.js`, confirmed by seeing real HMR log lines afterward.
+
+**Why:**
+The brief marks edit/delete as bonus, but building only the backend for them (already done in M1) without frontend UI would have left "the app" — the thing a reviewer actually clicks around in — missing a feature the user explicitly called a must-have for this build.
+
+**AI mistake or oddity noticed?**
+The stale-HMR bug above is the clearest example: the code was correct on disk the whole time, but the running app kept serving an old version, which would have looked like "the AI's new code doesn't work" if not for checking the actual served bytes (`curl .../TaskList.jsx | grep ...`) rather than trusting a browser screenshot alone — the screenshot would have just shown the old UI with no error to explain why. This is the second Vite/Docker networking quirk found this session (`allowedHosts` in Entry 4 was the first) — both were invisible from reading the code and only surfaced by actually exercising the running containers.

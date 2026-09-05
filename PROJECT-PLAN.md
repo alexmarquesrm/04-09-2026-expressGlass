@@ -6,13 +6,16 @@ Companion to [expressglass-task.md](expressglass-task.md) (the general idea/deci
 
 ## 1. Directory tree
 
+Reflects what actually exists as of M2 close-out; `(planned)` marks files that don't exist yet and belong to a later milestone.
+
 ```
 (repo root)
 ├── CLAUDE.md                    ← project context for Claude Code
-├── .mcp.json                    ← Context7 + Serena MCP config
+├── .mcp.json                    ← Context7 + Serena + Playwright MCP config
 ├── docker-compose.yml
-├── .env.example
-├── RELATORIO.md                 ← filled in as we build
+├── .env.example / .env
+├── .gitignore
+├── RELATORIO.md                  ← process report (M3)
 ├── prompts-file.md               ← raw prompt log
 ├── .claude/
 │   └── agents/
@@ -22,43 +25,57 @@ Companion to [expressglass-task.md](expressglass-task.md) (the general idea/deci
 │       └── review-qa.md
 ├── backend/
 │   ├── Dockerfile
+│   ├── .dockerignore
 │   ├── package.json
 │   ├── src/
 │   │   ├── server.js
 │   │   ├── db/
 │   │   │   ├── pool.js
+│   │   │   ├── migrate.js
 │   │   │   └── migrations/
 │   │   │       ├── 001_create_tasks.sql
-│   │   │       ├── 002_create_automations.sql
-│   │   │       └── 003_create_audit_log.sql
+│   │   │       ├── 002_create_automations.sql   (planned — M4)
+│   │   │       └── 003_create_audit_log.sql     (planned — M4)
 │   │   ├── routes/
 │   │   │   ├── tasks.routes.js
-│   │   │   └── chat.routes.js
+│   │   │   └── chat.routes.js                    (planned — M4)
 │   │   ├── controllers/
 │   │   │   ├── tasks.controller.js
-│   │   │   └── chat.controller.js
+│   │   │   └── chat.controller.js                (planned — M4)
 │   │   ├── services/
 │   │   │   ├── tasks.service.js
-│   │   │   └── llm.service.js       ← Claude API + tool definitions
+│   │   │   └── llm.service.js                    (planned — M4, Claude API + tool definitions)
+│   │   ├── utils/
+│   │   │   └── validation.js
 │   │   └── middleware/
 │   │       └── errorHandler.js
 │   └── tests/
-│       └── tasks.test.js
+│       ├── tasks.test.js
+│       └── validation.test.js
 └── frontend/
     ├── Dockerfile
+    ├── .dockerignore
     ├── package.json
+    ├── vite.config.js
     ├── index.html
     └── src/
-        ├── main.tsx
-        ├── App.tsx
+        ├── main.jsx
+        ├── App.jsx                    ← router + nav shell
         ├── api/
-        │   └── tasks.ts
+        │   └── tasks.js
+        ├── pages/
+        │   ├── TasksPage.jsx          ← core task list (route "/")
+        │   └── AssistantPage.jsx      ← chatbot placeholder (route "/assistant", built in M4)
         ├── components/
-        │   ├── TaskList.tsx
-        │   ├── TaskForm.tsx
-        │   └── ChatPanel.tsx
+        │   ├── NavBar.jsx
+        │   ├── TaskForm.jsx
+        │   ├── TaskList.jsx
+        │   └── ConfirmDialog.jsx      ← styled destructive-action confirm, replaces window.confirm
         └── styles/
+            └── global.css
 ```
+
+Plain JS/JSX throughout (no TypeScript) — an earlier draft of this tree showed `.ts`/`.tsx` files, which was aspirational and never matched what was actually scaffolded.
 
 ---
 
@@ -107,14 +124,16 @@ CREATE TABLE audit_log (
 
 ## 3. API contract
 
-**Core (required):**
-- `GET /api/tasks?filter=pending|completed|all` — list tasks
+**Core (required by the brief):**
+- `GET /api/tasks?filter=pending|completed` — list tasks (any other/missing filter value returns everything)
 - `POST /api/tasks` — `{ title, description?, due_date?, priority?, tags? }`
 
-**Bonus:**
+**Update/delete — bonus per the brief, but treated as required for this build:**
 - `GET /api/tasks/:id`
 - `PATCH /api/tasks/:id` — partial update
 - `DELETE /api/tasks/:id`
+
+Decision: the brief calls edit/delete optional, but both are fully built — API (implemented, 14 tests) *and* frontend UI: an inline edit form per task row (title/priority/due date/tags) and a delete action behind a styled confirmation dialog (`ConfirmDialog.jsx`, not the native `window.confirm`). Worth calling out explicitly in `RELATORIO.md` as a deliberate above-minimum choice, not scope creep — unlike the Trello-style stretch tier (section 10), this stayed inside the shape of the original CRUD app.
 
 **Chatbot extension:**
 - `POST /api/chat` — `{ message }` → `{ reply, actions_taken?: [{ tool, args, result }] }`
@@ -129,7 +148,7 @@ CREATE TABLE audit_log (
 
 **backend/Dockerfile** — Node LTS image, install deps, run migrations on start, `npm start`.
 
-**frontend/Dockerfile** — Node LTS image for the Vite/CRA dev server (or a static build served by nginx if we want a lighter final image — decide at build time).
+**frontend/Dockerfile** — Node LTS image running the Vite dev server directly (decided against a static nginx build — this is a local take-home demo, not a production deploy, so the dev server's simplicity and HMR win).
 
 **.env.example:**
 ```
@@ -138,6 +157,10 @@ PORT=3001
 ANTHROPIC_API_KEY=
 NODE_ENV=development
 ```
+
+**Known gotchas hit and fixed (worth knowing before touching `vite.config.js`):**
+- **Cross-container access needs `server.allowedHosts`.** Vite's dev server rejects any request whose `Host` header isn't `localhost`/the configured host (DNS-rebinding protection) — this silently 403'd requests from other containers on the compose network (e.g. a Playwright-based screenshot check hitting `frontend:5173`). Fixed with `allowedHosts: ['localhost', 'frontend']`.
+- **HMR can miss file changes on a Windows bind mount.** Native filesystem change events don't reliably cross the Windows-host → Docker bind-mount boundary, so chokidar's default watcher silently missed edits, serving stale JS. Fixed with `server.watch: { usePolling: true, interval: 300 }`. If frontend edits ever stop showing up live again, this is the first thing to check.
 
 ---
 
@@ -186,6 +209,7 @@ Before styling the real frontend, use Claude Code's built-in `design` skill to d
 - **First mockup:** "ExpressGlass Tasks Mockup" — static mockup of the core screen (header, add-task form, task list with status/priority-badge/due-date/tags, empty state). Aesthetic: clean/minimal internal-tool look, warm neutral palette, single indigo accent, Manrope type — chosen because the frontend had no pre-existing design system to match.
 - This is a **reference only**, kept outside the git repo (Claude manages it as a hosted Artifact, listed via `/artifacts` in the Claude Code terminal). The actual deliverable is the styling applied to `frontend/src/**` afterward to match it.
 - Worth a line in `RELATORIO.md`: this is a concrete example of using an AI-native design tool as part of the build process, not just code generation.
+- Follow-up polish beyond the original mockup (not shown in the published Artifact, only in the running app): the two-route split, and the full edit/delete UI with a styled confirm dialog. See `prompts-file.md` Entries 4-5 for how these were verified (headless Playwright checks) and the two Vite/Docker bugs that surfaced and got fixed along the way.
 
 ---
 
@@ -205,7 +229,7 @@ One commit per completed-and-reviewed milestone (see Build order below), not one
 
 1. **M0 — Scaffold ✅:** repo skeleton, `docker-compose.yml`, Dockerfiles, `.mcp.json`, `CLAUDE.md`, agent files, DB migration `001`.
 2. **M1 — Backend core ✅ verified + reviewed:** `tasks` CRUD API implemented and confirmed live via `docker compose up` (create/list/get/patch/delete/404 all exercised with curl against real Postgres). Enum-cast bug found and fixed (`prompts-file.md` Entry 1). Went through a Security + Review-QA subagent pass afterward: added `backend/src/utils/validation.js`, normalized error responses to stop leaking raw Postgres errors, and replaced the placeholder test with 14 real unit + integration tests, all passing against live Postgres (`prompts-file.md` Entry 2).
-3. **M2 — Frontend core ✅ verified + reviewed + styled:** Vite dev server confirmed serving on `:5173`; create-task form + list view wired to the API. Fixed a missing `catch` around `onCreate` in `TaskForm.jsx` found in the same review pass. Design mockup drafted (section 7) and implemented into the real app: global stylesheet, extended create form (priority + due date), status-toggle checkbox wired to `PATCH /api/tasks/:id`, priority badges, due dates, tag pills, empty state — confirmed working end-to-end via curl against the live API (not yet click-tested in an actual browser).
+3. **M2 — Frontend core ✅ verified + reviewed + styled + click-tested:** Vite dev server confirmed serving on `:5173`. Design mockup drafted (section 7) and implemented into the real app: global stylesheet, create form (title/priority/due date), status-toggle checkbox, priority badges, due dates, tag pills, empty state. Extended beyond the mockup with: a two-route split (`/` Tasks, `/assistant` a labeled M4 placeholder) via `react-router-dom` so future features don't crowd the core page; a full inline edit UI per task (title/priority/due date/tags) and a delete action behind a styled `ConfirmDialog`, since update/delete are treated as required here (section 3). Actually click-tested via a headless Playwright browser (not just curl) — screenshots confirmed visual fidelity to the mockup, and a scripted run drove real edit-save and delete-confirm clicks through the UI, verifying the changes landed in Postgres.
 4. **M3 — Report discipline check ✅:** `prompts-file.md` confirmed up to date (3 entries); `RELATORIO.md` drafted (bilingual EN/PT, matching `README.md`'s convention), distilling the 3 strongest prompt-log entries plus the required tools/models, accepted-vs-corrected breakdown, and the enum-cast SQL bug as the "AI mistake caught" example.
 5. **M4 — Chatbot extension:** `/api/chat`, tool definitions, `llm.service.js`, migrations `002`/`003`.
 6. **M5 — Feature roadmap:** confirmation-before-destructive-action, audit trail, tags/priority, NL due dates — in that order, stopping whenever time runs out.
