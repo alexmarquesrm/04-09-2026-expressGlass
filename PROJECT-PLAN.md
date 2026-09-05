@@ -189,6 +189,7 @@ Before styling the real frontend, use Claude Code's built-in `design` skill to d
 
 One commit per completed-and-reviewed milestone (see Build order below), not one giant commit at the end — so the git history itself documents the process for the report.
 
+- **Never commit without asking first** — this convention sets the target cadence (one commit per milestone), it is not standing permission to actually run `git commit`. Propose the commit and its message at each milestone boundary and wait for a go-ahead before running it.
 - Commit **after** a milestone's review pass (Security/Review-QA findings addressed), not immediately after first-draft implementation.
 - Message style: imperative present tense summary line, focused on *why* the milestone mattered, not a changelog of files touched (e.g. `Add validation + normalize error responses after core review pass`, not `Update tasks.controller.js, errorHandler.js`).
 - Every commit made by Claude Code ends with the `Co-Authored-By: Claude Sonnet 5 <noreply@anthropic.com>` trailer.
