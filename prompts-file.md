@@ -16,7 +16,7 @@ At the end, the 2-3 strongest entries below get promoted into `RELATORIO.md`; th
 - Claude Code (Sonnet 5) — main development agent, subagent orchestration
 - Context7 MCP — live library documentation lookup
 - Serena MCP — semantic code navigation/editing
-- Anthropic Claude API — powers the in-app chatbot extension (tool use / function calling)
+- DeepSeek API (`deepseek-v4-flash`, via the `openai` SDK pointed at DeepSeek's OpenAI-compatible endpoint) — powers the in-app chatbot extension (tool use / function calling). Built against the Claude API first, tested live against the Gemini API, then switched again to DeepSeek at the user's request — see Entries 9-11.
 
 ---
 
@@ -205,3 +205,85 @@ This project's own working agreement (see `PROJECT-PLAN.md` section 6/8 and this
 
 **AI mistake or oddity noticed?**
 Yes, two real ones, both caught by the subagent review rather than by initial self-testing: (1) the confirm endpoint's false "success" reply on a no-op delete/update (a correctness bug, not just a style nit), and (2) using the audit log's own auto-increment primary key as a bearer token for a destructive-action confirmation, which is a classic "don't use a sequential id as a capability token" mistake worth remembering for any future confirm/approve-style endpoint.
+
+---
+
+### Entry 9 — swapping the chatbot from Claude to Gemini — 2026-09-05
+
+**Prompt (exact):**
+> i added a gemini key to test no anthopic
+
+**Result obtained (summary):**
+The user had pasted a Gemini API key into the `ANTHROPIC_API_KEY` env var to "test" the chatbot without an Anthropic key. Since that key format/API is entirely different from what `llm.service.js` was written against, it would just fail auth — not actually test anything. Explained the mismatch, then asked (via a scoped multiple-choice question, since this is a real architecture decision, not a config tweak) whether to get a real Anthropic key instead, fully switch the backend to Gemini, or support both. The user chose to switch fully to Gemini. Rewrote `llm.service.js` to use `@google/genai` instead of `@anthropic-ai/sdk`, renamed the env var to `GEMINI_API_KEY` everywhere (`.env`, `.env.example`, `docker-compose.yml`, `CLAUDE.md`, `README.md`), and validated the whole thing against the real live API using the user's actual key (not mocked) — the same "run it for real, don't just read the code" approach that caught the original Postgres enum-cast bug in M1.
+
+**Accepted / Corrected / Rejected:**
+Accepted, but only after fixing two things the live API itself surfaced that no amount of code review would have caught:
+1. The first live call 404'd: `gemini-2.5-flash` (my initial guess at a model id) came back with an explicit API error naming the correct current model, `gemini-3.6-flash`. Corrected immediately from the error message.
+2. A live test of "apaga a tarefa 9" showed Gemini sometimes calls `list_tasks` to double-check a task before proposing the actual `delete_task`/`update_task` call — meaning one user message can legitimately need two tool calls in a row. The original single-tool-call design (copied from the Claude version, which never needed this) silently swallowed the destructive call: the reply text asked "are you sure?" but `requires_confirmation` was empty, so the frontend showed no way to actually confirm. Fixed with a small bounded loop (`MAX_TOOL_HOPS = 4`) instead of a strict single call. Separately, in some phrasings Gemini asked "are you sure?" in plain text without calling the destructive tool at all — fixed by explicitly telling it in the system prompt to always call the tool immediately and never self-confirm in text, since the app already has its own confirmation step after the tool call.
+
+**Why:**
+The user's instinct to test with a real key was the right one — this is exactly the kind of bug (wrong model string, provider-specific tool-calling quirks) that only shows up when you actually run the real API, matching the enum-cast lesson from M1. Rather than guessing at the Gemini function-calling response shape from memory, I wrote small throwaway probe scripts (`_probe.cjs`/`_probe2.cjs`, deleted after use) to inspect the real API's raw response before touching `llm.service.js`, which is how the exact shape of `response.functionCalls`, `response.text`, and the function-response turn format were confirmed.
+
+**AI mistake or oddity noticed?**
+Yes, twofold, both from carrying over an unexamined assumption from the Claude implementation: assuming (a) a hardcoded model id would still be valid months later without checking, and (b) that "the model always emits a tool call for destructive actions in the same turn" would hold for every provider — Gemini's actual behavior (sometimes chaining a lookup first, sometimes asking for confirmation in text instead of calling the tool) broke that assumption in ways the Claude-only implementation had never been tested against. Both were real, live-reproducible bugs, not just theoretical edge cases.
+
+---
+
+### Entry 10 — generic 502 was hiding a real 429 quota error — 2026-09-05/06
+
+**Prompt (exact):**
+> Nao foi possivel falar com o assistente de momento. Tenta novamente.
+
+**Result obtained (summary):**
+The user pasted back the chatbot's own generic error message after trying it live in the browser. That message was the deliberately-generic wrapper `callGemini()` throws on *any* failed Gemini call (added during the Security-review fix pass in Entry 8, specifically to stop a raw upstream error reaching the client). The problem: that same catch block only logged the *wrapped* generic error, never the original one — so my own security fix had accidentally made the real cause invisible in the server logs too, not just to the client. Added a `console.error` of the original error before wrapping it, reproduced the failure, and found the actual cause: `429 RESOURCE_EXHAUSTED` — the Gemini free-tier key is capped at 20 requests/day for `gemini-3.6-flash`, a quota this build's own live testing (Entries 9 and this session's manual curl/Playwright checks) had already burned through. Fixed by special-casing 429 in `callGemini()` into its own honest Portuguese message ("hit today's free quota, try again later") instead of lumping it in with the generic "something went wrong, try again" message, which was actively misleading for a daily quota (retrying immediately can't help).
+
+**Accepted / Corrected / Rejected:**
+Accepted, with the logging gap treated as its own bug worth fixing, not just the user-facing message.
+
+**Why:**
+A sanitize-the-error-message fix that also erases the error from the server's own logs is a net loss for debuggability, even though the original intent (don't leak upstream SDK error text to an untrusted client) was correct. The fix should have kept full detail server-side from the start; catching this quickly only worked because the user pasted the exact message back rather than just saying "the chatbot is broken."
+
+**AI mistake or oddity noticed?**
+Yes — a self-inflicted one. The Security-review fix in Entry 8 (wrap Gemini/Anthropic errors so raw SDK text never reaches the client) was implemented in a way that also discarded the original error before it ever reached a log line, which is a distinct mistake from the thing the fix was meant to address. General lesson for next time: sanitizing an error for the *client* response should never mean losing it for *server-side* logging — log the real error, then throw the sanitized one.
+
+---
+
+### Entry 11 — switching again, Gemini to DeepSeek, under an explicit API-cost budget — 2026-09-06
+
+**Prompt (exact):**
+> changing to deepseek API afterall, use one request to test da API, dont waste money
+
+(followed shortly after by: "deepseek-v4-flash is enough", specifying the model)
+
+**Result obtained (summary):**
+A second provider switch, this time under an explicit constraint that changed how verification had to work: only one real, billed API call was allowed. Rewrote `llm.service.js` a third time, now against DeepSeek's OpenAI-compatible chat-completions endpoint using the official `openai` npm package (`baseURL: 'https://api.deepseek.com'`, model `deepseek-v4-flash` per the user's follow-up), replacing `@google/genai`. Renamed the env var again (`GEMINI_API_KEY` -> `DEEPSEEK_API_KEY`) across `.env`/`.env.example`/`docker-compose.yml`/`CLAUDE.md`/`README.md`. Ran everything that costs nothing first — the full 21-test suite (pure Node/Postgres, no LLM calls) — before touching the real API at all. Spent the single allowed call on a short throwaway probe script (`_probe_ds.cjs`, deleted after) hitting the real endpoint once with a destructive-intent message, dumped the full raw response, and confirmed the response shape matched the standard OpenAI format exactly (`choices[0].message.tool_calls[0].function.{name,arguments}`) — so the rest of the already-written code could be trusted by inspection rather than by further live calls. Also re-verified the confirm/cancel path (which never calls the LLM at all, so it's free) by manually seeding a pending `audit_log` row and confirming it through the real HTTP endpoint.
+
+**Accepted / Corrected / Rejected:**
+Accepted. One real correction along the way: the first attempt at the single test call failed before any network request even went out (`OPENAI_API_KEY environment variable is missing`) — not an API problem, but a `docker compose restart` not being enough to pick up the renamed env var (only `docker compose up -d`/recreate re-reads `docker-compose.yml`'s environment block; `restart` just restarts the existing container with its old environment). Fixed by recreating the container properly before retrying, so the wasted attempt cost nothing (it never reached DeepSeek's servers).
+
+**Why:**
+Real money changes the right verification strategy: with Gemini's free tier the approach was "run it for real, repeatedly, until it's solid," which is how the multi-hop tool-calling bug got caught — but that same approach isn't appropriate once each call has a real cost the user is paying directly. The right adaptation was to front-load everything free (the non-API test suite, code review, the free confirm-path check) and spend the one paid call on the single highest-uncertainty question (does the exact request/response shape match what the code assumes), rather than on re-proving things already established to be provider-agnostic (like the confirm/cancel logic) or already known from the Gemini pass (like the multi-hop tool-calling behavior, which reappeared identically with DeepSeek and confirmed the existing bounded-loop fix was the right generalization, not a Gemini-specific patch).
+
+**AI mistake or oddity noticed?**
+One small one, caught before it could cost anything: assuming a `docker compose restart` would be enough after renaming an env var in `docker-compose.yml`, when only recreating the container actually re-reads that file's environment block. Caught because the OpenAI client fails loudly and immediately when no key is present, before making any network call — a case where fast, obvious local failure is exactly the safety net an expensive-to-repeat live test needs.
+
+---
+
+### Entry 12 — a false hallucination alarm, and a real bug hiding under it — 2026-09-06
+
+**Prompt (exact):**
+> assistent output but i dont see the note "confirmar envio email" on the task list why?
+
+(the user had pasted a chat transcript where the assistant listed a task, "Reunião com o Francisco," with a note about emailing a confirmation, that didn't match any of the known seeded demo tasks)
+
+**Result obtained (summary):**
+Misdiagnosed this on first read: since "Reunião com o Francisco" matched none of the 4 known seeded tasks, I concluded the assistant had fabricated an entire task and presented it as real — a serious grounding failure for a tool whose whole premise is trustworthy function-calling — and proposed two fixes (a free prompt tweak vs. a guaranteed-but-2x-cost `tool_choice: required` change) before doing anything. The user corrected this immediately: they had created that exact task themselves, live, through the chatbot, in an earlier message not visible to me, and asked a more specific and more useful question instead — is there a database field for the extra note they'd included? Checked the real row via `curl` and found the task was completely real (`id: 8`) and the note was already sitting in the `description` column, exactly as the chatbot had written it. The actual bug: `description` has existed on the `tasks` table and round-tripped through the API since M1, but the frontend — `TaskForm.jsx`, `TaskList.jsx`, and the inline edit row — never had a field for it, in any of the M2/M3/M4 passes. It was a correct, silently-unused column the whole time; nothing surfaced it until the chatbot was the first thing to ever actually populate it with real content. Fixed by adding a description line under the title in `TaskList.jsx`, an optional "Notas" input to `TaskForm.jsx`, and the same field to the inline edit row — a small, frontend-only, zero-API-cost fix, verified visually via Playwright against the real task.
+
+**Accepted / Corrected / Rejected:**
+My initial hallucination diagnosis was rejected by the user (correctly) before any fix was applied — no harm done, since I asked before acting rather than jumping straight to rewriting the system prompt or the tool-calling logic for a bug that didn't exist. The actual fix (surfacing `description` in the UI) was accepted as-is.
+
+**Why:**
+Worth keeping in the report as a paired lesson: (1) a plausible-sounding "the AI made this up" diagnosis needs to be checked against the real database before acting on it, not just against a mental list of "tasks I remember seeding" — I don't have visibility into everything the user does in their own browser session; and (2) this is a good example of a bug that pre-dated the chatbot entirely (a full milestone's worth of frontend work never wired up an existing, working DB/API field) but was only ever going to be *discovered* once something started actually writing meaningful data into it — the chatbot didn't cause the bug, it just was the first thing to exercise the code path that revealed it.
+
+**AI mistake or oddity noticed?**
+Yes, mine: jumping to "the LLM hallucinated" as the explanation for unexpected chat output, without first checking the one cheap, decisive, non-LLM source of truth available (the actual Postgres row) before proposing a fix. The lesson generalizes past this one bug: when a chatbot's output looks wrong, check the ground truth (the database, the logs) before assuming the model is the thing that's wrong — the discrepancy might instead be a real feature gap the chatbot exposed rather than caused.

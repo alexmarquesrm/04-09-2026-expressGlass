@@ -1,67 +1,81 @@
-const Anthropic = require('@anthropic-ai/sdk');
+const OpenAI = require('openai');
 const tasksService = require('./tasks.service');
 const auditService = require('./audit.service');
 const { parseId, validateTaskFields } = require('../utils/validation');
 
-const MODEL = 'claude-sonnet-5';
+const MODEL = 'deepseek-v4-flash';
 
 const SYSTEM_PROMPT =
   'Es o assistente de tarefas da ExpressGlass. Respondes sempre em portugues, de forma breve e direta. ' +
   'Usa as ferramentas disponiveis para consultar, criar, atualizar ou eliminar tarefas. ' +
-  'Nunca inventes ids de tarefas - usa list_tasks para os descobrir primeiro se nao tiveres a certeza.';
+  'Nunca inventes ids de tarefas - usa list_tasks para os descobrir primeiro se nao tiveres a certeza. ' +
+  'Quando o pedido for para atualizar ou eliminar uma tarefa, chama sempre a ferramenta update_task ou ' +
+  'delete_task de imediato assim que souberes o id certo - nunca perguntes tu mesmo se o utilizador tem a ' +
+  'certeza em vez de chamar a ferramenta; a aplicacao ja mostra um pedido de confirmacao proprio depois de ' +
+  'chamares a ferramenta, antes de a acao ser realmente executada.';
 
 const TOOLS = [
   {
-    name: 'list_tasks',
-    description: 'List tasks, optionally filtered by status.',
-    input_schema: {
-      type: 'object',
-      properties: {
-        filter: { type: 'string', enum: ['pending', 'completed'] },
+    type: 'function',
+    function: {
+      name: 'list_tasks',
+      description: 'List tasks, optionally filtered by status.',
+      parameters: {
+        type: 'object',
+        properties: {
+          filter: { type: 'string', enum: ['pending', 'completed'] },
+        },
       },
     },
   },
   {
-    name: 'create_task',
-    description: 'Create a new task.',
-    input_schema: {
-      type: 'object',
-      properties: {
-        title: { type: 'string' },
-        description: { type: 'string' },
-        due_date: { type: 'string', description: 'ISO date, YYYY-MM-DD' },
-        priority: { type: 'string', enum: ['low', 'medium', 'high'] },
-        tags: { type: 'array', items: { type: 'string' } },
+    type: 'function',
+    function: {
+      name: 'create_task',
+      description: 'Create a new task.',
+      parameters: {
+        type: 'object',
+        properties: {
+          title: { type: 'string' },
+          description: { type: 'string' },
+          due_date: { type: 'string', description: 'ISO date, YYYY-MM-DD' },
+          priority: { type: 'string', enum: ['low', 'medium', 'high'] },
+          tags: { type: 'array', items: { type: 'string' } },
+        },
+        required: ['title'],
       },
-      required: ['title'],
     },
   },
   {
-    name: 'update_task',
-    description: 'Update an existing task by id. Destructive: requires user confirmation before it is applied.',
-    input_schema: {
-      type: 'object',
-      properties: {
-        id: { type: 'integer' },
-        title: { type: 'string' },
-        description: { type: 'string' },
-        status: { type: 'string', enum: ['pending', 'completed'] },
-        priority: { type: 'string', enum: ['low', 'medium', 'high'] },
-        due_date: { type: 'string' },
-        tags: { type: 'array', items: { type: 'string' } },
+    type: 'function',
+    function: {
+      name: 'update_task',
+      description: 'Update an existing task by id. Destructive: requires user confirmation before it is applied.',
+      parameters: {
+        type: 'object',
+        properties: {
+          id: { type: 'integer' },
+          title: { type: 'string' },
+          description: { type: 'string' },
+          status: { type: 'string', enum: ['pending', 'completed'] },
+          priority: { type: 'string', enum: ['low', 'medium', 'high'] },
+          due_date: { type: 'string' },
+          tags: { type: 'array', items: { type: 'string' } },
+        },
+        required: ['id'],
       },
-      required: ['id'],
     },
   },
   {
-    name: 'delete_task',
-    description: 'Delete a task by id. Destructive: requires user confirmation before it is applied.',
-    input_schema: {
-      type: 'object',
-      properties: {
-        id: { type: 'integer' },
+    type: 'function',
+    function: {
+      name: 'delete_task',
+      description: 'Delete a task by id. Destructive: requires user confirmation before it is applied.',
+      parameters: {
+        type: 'object',
+        properties: { id: { type: 'integer' } },
+        required: ['id'],
       },
-      required: ['id'],
     },
   },
 ];
@@ -78,18 +92,31 @@ const FIELD_LABELS = {
 };
 
 function getClient() {
-  if (!process.env.ANTHROPIC_API_KEY) {
-    const err = new Error('O assistente de chat nao esta configurado (falta ANTHROPIC_API_KEY).');
+  if (!process.env.DEEPSEEK_API_KEY) {
+    const err = new Error('O assistente de chat nao esta configurado (falta DEEPSEEK_API_KEY).');
     err.status = 503;
     throw err;
   }
-  return new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+  return new OpenAI({ apiKey: process.env.DEEPSEEK_API_KEY, baseURL: 'https://api.deepseek.com' });
 }
 
-async function callClaude(client, params) {
+async function callDeepSeek(client, params) {
   try {
-    return await client.messages.create(params);
+    return await client.chat.completions.create(params);
   } catch (err) {
+    console.error('DeepSeek API call failed:', err);
+    if (err.status === 429) {
+      const wrapped = new Error(
+        'O assistente atingiu o limite de pedidos a API do DeepSeek por agora. Tenta novamente mais tarde.'
+      );
+      wrapped.status = 429;
+      throw wrapped;
+    }
+    if (err.status === 401) {
+      const wrapped = new Error('O assistente de chat nao esta configurado corretamente (chave da API invalida).');
+      wrapped.status = 503;
+      throw wrapped;
+    }
     const wrapped = new Error('Nao foi possivel falar com o assistente de momento. Tenta novamente.');
     wrapped.status = 502;
     throw wrapped;
@@ -119,13 +146,6 @@ async function executeTool(name, args) {
   }
 }
 
-function textFrom(response) {
-  return response.content
-    .filter((block) => block.type === 'text')
-    .map((block) => block.text)
-    .join('\n');
-}
-
 function formatValue(value) {
   if (value === null || value === undefined || value === '') return '(vazio)';
   if (Array.isArray(value)) return value.length ? value.join(', ') : '(vazio)';
@@ -138,10 +158,10 @@ function describeChanges(task, input) {
     .map((key) => `${FIELD_LABELS[key] || key}: "${formatValue(task[key])}" -> "${formatValue(input[key])}"`);
 }
 
-async function handlePendingConfirmation(message, toolUse) {
+async function handlePendingConfirmation(message, call) {
   let id;
   try {
-    id = parseId(toolUse.input.id);
+    id = parseId(call.args.id);
   } catch {
     return { reply: 'O id da tarefa indicado nao e valido.', actions_taken: [] };
   }
@@ -151,8 +171,8 @@ async function handlePendingConfirmation(message, toolUse) {
     return { reply: `Nao encontrei nenhuma tarefa com o id ${id}.`, actions_taken: [] };
   }
 
-  if (toolUse.name === 'update_task') {
-    const { id: _drop, ...fields } = toolUse.input;
+  if (call.name === 'update_task') {
+    const { id: _drop, ...fields } = call.args;
     try {
       validateTaskFields(fields, { requireTitle: false });
     } catch (err) {
@@ -160,71 +180,73 @@ async function handlePendingConfirmation(message, toolUse) {
     }
   }
 
-  const verb = toolUse.name === 'delete_task' ? 'eliminar' : 'atualizar';
+  const verb = call.name === 'delete_task' ? 'eliminar' : 'atualizar';
   const summary = `${verb} a tarefa "${task.title}" (#${task.id})`;
-  const changes = toolUse.name === 'update_task' ? describeChanges(task, toolUse.input) : [];
+  const changes = call.name === 'update_task' ? describeChanges(task, call.args) : [];
   const detail = changes.length ? `\n${changes.join('\n')}` : '';
 
-  const auditRow = await auditService.logPendingToolCall({ message, tool: toolUse.name, args: toolUse.input });
+  const auditRow = await auditService.logPendingToolCall({ message, tool: call.name, args: call.args });
 
   return {
     reply: `Queres mesmo ${summary}?${detail}\n\nConfirma para eu avancar.`,
     actions_taken: [],
     requires_confirmation: {
       confirmation_token: auditRow.confirmation_token,
-      tool: toolUse.name,
-      args: toolUse.input,
+      tool: call.name,
+      args: call.args,
       summary,
     },
   };
 }
 
-async function handleImmediateTool(client, message, toolUse, firstResponse) {
-  const result = await executeTool(toolUse.name, toolUse.input);
-  await auditService.logToolCall({ message, tool: toolUse.name, args: toolUse.input, result });
-
-  const followUp = await callClaude(client, {
-    model: MODEL,
-    max_tokens: 1024,
-    system: SYSTEM_PROMPT,
-    tools: TOOLS,
-    messages: [
-      { role: 'user', content: message },
-      { role: 'assistant', content: firstResponse.content },
-      {
-        role: 'user',
-        content: [{ type: 'tool_result', tool_use_id: toolUse.id, content: JSON.stringify(result) }],
-      },
-    ],
-  });
-
-  return {
-    reply: textFrom(followUp),
-    actions_taken: [{ tool: toolUse.name, args: toolUse.input, result }],
-  };
-}
+// Some providers look a task up (list_tasks) before proposing a destructive
+// change to it, so one user message can need more than one tool call in a row
+// (e.g. "apaga a tarefa 9" -> list_tasks to double-check, then delete_task).
+// Bounded so a confused model can't turn one message into unbounded paid calls.
+const MAX_TOOL_HOPS = 4;
 
 async function handleMessage(message) {
   const client = getClient();
-  const response = await callClaude(client, {
-    model: MODEL,
-    max_tokens: 1024,
-    system: SYSTEM_PROMPT,
-    tools: TOOLS,
-    messages: [{ role: 'user', content: message }],
-  });
+  const messages = [
+    { role: 'system', content: SYSTEM_PROMPT },
+    { role: 'user', content: message },
+  ];
+  const actionsTaken = [];
 
-  const toolUse = response.content.find((block) => block.type === 'tool_use');
+  for (let hop = 0; hop < MAX_TOOL_HOPS; hop++) {
+    const completion = await callDeepSeek(client, {
+      model: MODEL,
+      messages,
+      tools: TOOLS,
+    });
 
-  if (!toolUse) {
-    return { reply: textFrom(response), actions_taken: [] };
+    const responseMessage = completion.choices[0].message;
+    const toolCall = responseMessage.tool_calls && responseMessage.tool_calls[0];
+
+    if (!toolCall) {
+      return { reply: responseMessage.content || '', actions_taken: actionsTaken };
+    }
+
+    const call = {
+      name: toolCall.function.name,
+      args: JSON.parse(toolCall.function.arguments || '{}'),
+      id: toolCall.id,
+    };
+
+    if (DESTRUCTIVE_TOOLS.has(call.name)) {
+      const pending = await handlePendingConfirmation(message, call);
+      return { ...pending, actions_taken: [...actionsTaken, ...pending.actions_taken] };
+    }
+
+    const result = await executeTool(call.name, call.args);
+    await auditService.logToolCall({ message, tool: call.name, args: call.args, result });
+    actionsTaken.push({ tool: call.name, args: call.args, result });
+
+    messages.push(responseMessage);
+    messages.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(result) });
   }
 
-  if (DESTRUCTIVE_TOOLS.has(toolUse.name)) {
-    return handlePendingConfirmation(message, toolUse);
-  }
-
-  return handleImmediateTool(client, message, toolUse, response);
+  return { reply: 'Nao consegui concluir o pedido - tenta ser mais especifico.', actions_taken: actionsTaken };
 }
 
 async function confirmAction(confirmationToken, confirmed) {

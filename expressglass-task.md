@@ -93,6 +93,8 @@ User → Chat UI → Backend (/chat endpoint) → LLM (Claude API) → decides w
 4. Backend executes the real function (inserts into the DB)
 5. Result goes back to Claude, which generates the final natural-language response
 
+**Implementation note (post-build):** the diagram and flow above describe the general tool-use architecture as planned, with Claude as the illustrative LLM. The actual `M4` build was written against the Claude API first, tested live against the **Gemini API**, and finally settled on the **DeepSeek API** (`openai` SDK pointed at DeepSeek's OpenAI-compatible endpoint, model `deepseek-v4-flash`) — the brief itself places no restriction on which AI tool/model is used. See `PROJECT-PLAN.md` section 3 and `prompts-file.md` Entries 9-11 for what each swap involved, including the live-only bugs the Gemini pass surfaced and the "verify with exactly one paid call" constraint the DeepSeek pass was built under.
+
 **Two ways to expose the tools:**
 - **Direct function calling** in the own API (simpler and faster — recommended for the challenge)
 - **Via an MCP server** — more aligned with good architecture practice (decouples the LLM from the specific backend), but more work for a small challenge. Worth mentioning in the report as a natural evolution, without over-engineering the delivery.

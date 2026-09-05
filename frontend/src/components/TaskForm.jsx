@@ -2,6 +2,7 @@ import { useState } from 'react';
 
 export default function TaskForm({ onCreate }) {
   const [title, setTitle] = useState('');
+  const [description, setDescription] = useState('');
   const [priority, setPriority] = useState('medium');
   const [dueDate, setDueDate] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -11,8 +12,9 @@ export default function TaskForm({ onCreate }) {
     if (!title.trim()) return;
     setSubmitting(true);
     try {
-      await onCreate({ title, priority, due_date: dueDate || undefined });
+      await onCreate({ title, description: description.trim() || undefined, priority, due_date: dueDate || undefined });
       setTitle('');
+      setDescription('');
       setPriority('medium');
       setDueDate('');
     } catch {
@@ -50,6 +52,12 @@ export default function TaskForm({ onCreate }) {
           Adicionar tarefa
         </button>
       </form>
+      <input
+        className="field"
+        value={description}
+        onChange={(e) => setDescription(e.target.value)}
+        placeholder="Notas (opcional)"
+      />
     </div>
   );
 }

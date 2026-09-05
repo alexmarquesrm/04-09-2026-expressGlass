@@ -8,7 +8,7 @@ ExpressGlass take-home challenge: a task-management app (Node/Express + PostgreS
 docker compose up
 ```
 
-Backend on `:3001`, frontend on `:5173`, Postgres on `:5432`. Copy `.env.example` to `.env` first (fill `ANTHROPIC_API_KEY` only if working on the chatbot extension).
+Backend on `:3001`, frontend on `:5173`, Postgres on `:5432`. Copy `.env.example` to `.env` first (fill `DEEPSEEK_API_KEY` only if working on the chatbot extension).
 
 ## Conventions
 

@@ -54,6 +54,7 @@ function EmptyIcon() {
 
 function EditRow({ task, onSave, onCancel }) {
   const [title, setTitle] = useState(task.title);
+  const [description, setDescription] = useState(task.description || '');
   const [priority, setPriority] = useState(task.priority);
   const [dueDate, setDueDate] = useState(task.due_date ? task.due_date.slice(0, 10) : '');
   const [tagsText, setTagsText] = useState((task.tags || []).join(', '));
@@ -65,6 +66,7 @@ function EditRow({ task, onSave, onCancel }) {
     try {
       await onSave(task.id, {
         title,
+        description: description.trim() || null,
         priority,
         due_date: dueDate || null,
         tags: tagsText
@@ -80,15 +82,36 @@ function EditRow({ task, onSave, onCancel }) {
   return (
     <div className="task-row" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 8 }}>
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-        <input className="field-sm" style={{ flex: '1 1 180px' }} value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Título" />
-        <select className="field-sm" value={priority} onChange={(e) => setPriority(e.target.value)}>
-          <option value="low">Baixa</option>
-          <option value="medium">Média</option>
-          <option value="high">Alta</option>
-        </select>
-        <input className="field-sm" type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
+        <div style={{ display: 'flex', flexDirection: 'column', flex: '1 1 180px' }}>
+          <label className="field-label">Título</label>
+          <input className="field-sm" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Título" />
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column' }}>
+          <label className="field-label">Prioridade</label>
+          <select className="field-sm" value={priority} onChange={(e) => setPriority(e.target.value)}>
+            <option value="low">Baixa</option>
+            <option value="medium">Média</option>
+            <option value="high">Alta</option>
+          </select>
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column' }}>
+          <label className="field-label">Data limite</label>
+          <input className="field-sm" type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
+        </div>
       </div>
-      <input className="field-sm" value={tagsText} onChange={(e) => setTagsText(e.target.value)} placeholder="Etiquetas, separadas por vírgula" />
+      <div style={{ display: 'flex', flexDirection: 'column' }}>
+        <label className="field-label">Notas</label>
+        <input
+          className="field-sm"
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+          placeholder="Notas (opcional)"
+        />
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column' }}>
+        <label className="field-label">Etiquetas</label>
+        <input className="field-sm" value={tagsText} onChange={(e) => setTagsText(e.target.value)} placeholder="Etiquetas, separadas por vírgula" />
+      </div>
       <div style={{ display: 'flex', gap: 8 }}>
         <button type="button" className="btn-primary" style={{ padding: '6px 14px', fontSize: 13 }} onClick={handleSave} disabled={saving}>
           Guardar
@@ -160,6 +183,9 @@ export default function TaskList({ tasks, onToggleStatus, onUpdate, onDelete }) 
                 </span>
                 <span className={`badge-priority ${task.priority}`}>{PRIORITY_LABELS[task.priority] || task.priority}</span>
               </div>
+              {task.description && (
+                <div style={{ fontSize: 13, color: 'var(--color-muted)' }}>{task.description}</div>
+              )}
               {(task.due_date || (task.tags && task.tags.length > 0)) && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
                   {task.due_date && (

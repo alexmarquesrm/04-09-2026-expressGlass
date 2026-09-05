@@ -25,7 +25,7 @@ services:
     environment:
       DATABASE_URL: postgres://postgres:postgres@db:5432/expressglass
       PORT: 3001
-      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
       NODE_ENV: development
     ports:
       - "3001:3001"
