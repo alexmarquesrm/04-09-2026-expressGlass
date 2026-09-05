@@ -1,0 +1,188 @@
+# PROJECT-PLAN — concrete structure for implementation
+
+Companion to [expressglass-task.md](expressglass-task.md) (the general idea/decisions doc). This file is the concrete reference to scaffold and build from — directory tree, schema, API contract, Docker, MCP config, agents.
+
+---
+
+## 1. Directory tree
+
+```
+expressglass-challenge/
+├── CLAUDE.md                    ← project context for Claude Code
+├── .mcp.json                    ← Context7 + Serena MCP config
+├── docker-compose.yml
+├── .env.example
+├── RELATORIO.md                 ← filled in as we build
+├── prompts-file.md               ← raw prompt log
+├── .claude/
+│   └── agents/
+│       ├── product.md
+│       ├── dev.md
+│       ├── security.md
+│       └── review-qa.md
+├── backend/
+│   ├── Dockerfile
+│   ├── package.json
+│   ├── src/
+│   │   ├── server.js
+│   │   ├── db/
+│   │   │   ├── pool.js
+│   │   │   └── migrations/
+│   │   │       ├── 001_create_tasks.sql
+│   │   │       ├── 002_create_automations.sql
+│   │   │       └── 003_create_audit_log.sql
+│   │   ├── routes/
+│   │   │   ├── tasks.routes.js
+│   │   │   └── chat.routes.js
+│   │   ├── controllers/
+│   │   │   ├── tasks.controller.js
+│   │   │   └── chat.controller.js
+│   │   ├── services/
+│   │   │   ├── tasks.service.js
+│   │   │   └── llm.service.js       ← Claude API + tool definitions
+│   │   └── middleware/
+│   │       └── errorHandler.js
+│   └── tests/
+│       └── tasks.test.js
+└── frontend/
+    ├── Dockerfile
+    ├── package.json
+    ├── index.html
+    └── src/
+        ├── main.tsx
+        ├── App.tsx
+        ├── api/
+        │   └── tasks.ts
+        ├── components/
+        │   ├── TaskList.tsx
+        │   ├── TaskForm.tsx
+        │   └── ChatPanel.tsx
+        └── styles/
+```
+
+---
+
+## 2. Database schema (PostgreSQL)
+
+```sql
+-- 001_create_tasks.sql
+CREATE TYPE task_status AS ENUM ('pending', 'completed');
+CREATE TYPE task_priority AS ENUM ('low', 'medium', 'high');
+
+CREATE TABLE tasks (
+  id          SERIAL PRIMARY KEY,
+  title       TEXT NOT NULL,
+  description TEXT,
+  status      task_status NOT NULL DEFAULT 'pending',
+  priority    task_priority NOT NULL DEFAULT 'medium',
+  due_date    DATE,
+  tags        TEXT[] DEFAULT '{}',
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- 002_create_automations.sql
+CREATE TABLE automations (
+  id          SERIAL PRIMARY KEY,
+  trigger     TEXT NOT NULL,
+  action      TEXT NOT NULL,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- 003_create_audit_log.sql
+CREATE TABLE audit_log (
+  id          SERIAL PRIMARY KEY,
+  source      TEXT NOT NULL DEFAULT 'chat',
+  message     TEXT NOT NULL,
+  tool_called TEXT,
+  tool_args   JSONB,
+  result      JSONB,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+```
+
+`automations` and `audit_log` back the chatbot extension and feature-roadmap items 1-2 — skip them if the core-only scope is what ships.
+
+---
+
+## 3. API contract
+
+**Core (required):**
+- `GET /api/tasks?filter=pending|completed|all` — list tasks
+- `POST /api/tasks` — `{ title, description?, due_date?, priority?, tags? }`
+
+**Bonus:**
+- `GET /api/tasks/:id`
+- `PATCH /api/tasks/:id` — partial update
+- `DELETE /api/tasks/:id`
+
+**Chatbot extension:**
+- `POST /api/chat` — `{ message }` → `{ reply, actions_taken?: [{ tool, args, result }] }`
+  - Destructive tools (`delete_task`, `update_task`) return a pending-confirmation state instead of executing immediately (feature-roadmap item 1); a follow-up confirm call executes it.
+  - Every tool call is written to `audit_log` (feature-roadmap item 2).
+
+---
+
+## 4. Docker
+
+**docker-compose.yml** — three services: `db` (postgres:16-alpine, named volume, health check), `backend` (build `./backend`, depends on `db` healthy, reads `DATABASE_URL`/`ANTHROPIC_API_KEY` from `.env`), `frontend` (build `./frontend`, dev server, depends on `backend`). One `docker compose up` brings up the whole stack — no local Postgres install needed.
+
+**backend/Dockerfile** — Node LTS image, install deps, run migrations on start, `npm start`.
+
+**frontend/Dockerfile** — Node LTS image for the Vite/CRA dev server (or a static build served by nginx if we want a lighter final image — decide at build time).
+
+**.env.example:**
+```
+DATABASE_URL=postgres://postgres:postgres@db:5432/expressglass
+PORT=3001
+ANTHROPIC_API_KEY=
+NODE_ENV=development
+```
+
+---
+
+## 5. MCP config (`.mcp.json`)
+
+```json
+{
+  "mcpServers": {
+    "context7": {
+      "command": "npx",
+      "args": ["-y", "@upstash/context7-mcp"]
+    },
+    "serena": {
+      "command": "uvx",
+      "args": ["--from", "git+https://github.com/oraios/serena", "serena", "start-mcp-server", "--project", "."]
+    }
+  }
+}
+```
+
+Requires `uv`/`uvx` installed locally for Serena. Exact args to confirm against Serena's current README when we scaffold (project mode vs. context flags may have changed).
+
+---
+
+## 6. Subagents (`.claude/agents/*.md`)
+
+| Agent | Tools | Role |
+|---|---|---|
+| `product.md` | read-only | Defines requirements/acceptance criteria only, never writes code |
+| `dev.md` | Read, Write, Edit, Bash | Implements backend/frontend code |
+| `security.md` | read-only | Reviews for injection/input-validation issues, reports only |
+| `review-qa.md` | Read, Bash | Runs tests, checks against Product's criteria, structured feedback (critical/warning/suggestion) |
+
+`CLAUDE.md` at root holds: stack summary, conventions (e.g. parameterized queries only, no raw SQL string interpolation), how to run (`docker compose up`), and pointers to this file + the general-idea doc.
+
+---
+
+## 7. Build order (milestones)
+
+1. **M0 — Scaffold:** repo skeleton, `docker-compose.yml`, Dockerfiles, `.mcp.json`, `CLAUDE.md`, agent files, DB migration `001`.
+2. **M1 — Backend core:** `tasks` CRUD API + a few tests, running against Dockerized Postgres.
+3. **M2 — Frontend core:** create-task form + list view wired to the API.
+4. **M3 — Report discipline check:** confirm `prompts-file.md` has been kept up to date so far; start drafting `RELATORIO.md`.
+5. **M4 — Chatbot extension:** `/api/chat`, tool definitions, `llm.service.js`, migrations `002`/`003`.
+6. **M5 — Feature roadmap:** confirmation-before-destructive-action, audit trail, tags/priority, NL due dates — in that order, stopping whenever time runs out.
+7. **M6 — Polish:** final README pass, Security/Review-QA agent pass, finish `RELATORIO.md`.
+
+Core (M0-M2) is the non-negotiable deliverable; everything after M2 is additive and gets cut first if time is short.
