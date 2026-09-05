@@ -5,14 +5,30 @@ const { parseId, validateTaskFields } = require('../utils/validation');
 
 const MODEL = 'deepseek-v4-flash';
 
-const SYSTEM_PROMPT =
-  'Es o assistente de tarefas da ExpressGlass. Respondes sempre em portugues, de forma breve e direta. ' +
-  'Usa as ferramentas disponiveis para consultar, criar, atualizar ou eliminar tarefas. ' +
-  'Nunca inventes ids de tarefas - usa list_tasks para os descobrir primeiro se nao tiveres a certeza. ' +
-  'Quando o pedido for para atualizar ou eliminar uma tarefa, chama sempre a ferramenta update_task ou ' +
-  'delete_task de imediato assim que souberes o id certo - nunca perguntes tu mesmo se o utilizador tem a ' +
-  'certeza em vez de chamar a ferramenta; a aplicacao ja mostra um pedido de confirmacao proprio depois de ' +
-  'chamares a ferramenta, antes de a acao ser realmente executada.';
+function localDateString(date) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+function buildSystemPrompt() {
+  const now = new Date();
+  const today = localDateString(now);
+  const weekday = now.toLocaleDateString('pt-PT', { weekday: 'long' });
+  return (
+    'Es o assistente de tarefas da ExpressGlass. Respondes sempre em portugues, de forma breve e direta. ' +
+    'Usa as ferramentas disponiveis para consultar, criar, atualizar ou eliminar tarefas. ' +
+    'Nunca inventes ids de tarefas - usa list_tasks para os descobrir primeiro se nao tiveres a certeza. ' +
+    'Quando o pedido for para atualizar ou eliminar uma tarefa, chama sempre a ferramenta update_task ou ' +
+    'delete_task de imediato assim que souberes o id certo - nunca perguntes tu mesmo se o utilizador tem a ' +
+    'certeza em vez de chamar a ferramenta; a aplicacao ja mostra um pedido de confirmacao proprio depois de ' +
+    'chamares a ferramenta, antes de a acao ser realmente executada. ' +
+    `A data de hoje e ${today} (${weekday}). Quando o pedido usar datas relativas (amanha, a semana que ` +
+    'vem, sexta-feira, daqui a X dias, etc.), calcula tu mesmo a data real a partir de hoje e passa-a a ' +
+    'due_date no formato YYYY-MM-DD - nunca deixes essa conta por fazer nem inventes uma data sem calcular.'
+  );
+}
 
 const TOOLS = [
   {
@@ -208,7 +224,7 @@ const MAX_TOOL_HOPS = 4;
 async function handleMessage(message) {
   const client = getClient();
   const messages = [
-    { role: 'system', content: SYSTEM_PROMPT },
+    { role: 'system', content: buildSystemPrompt() },
     { role: 'user', content: message },
   ];
   const actionsTaken = [];

@@ -27,6 +27,7 @@ services:
       PORT: 3001
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
       NODE_ENV: development
+      TZ: Europe/Lisbon
     ports:
       - "3001:3001"
     volumes:

@@ -287,3 +287,22 @@ Worth keeping in the report as a paired lesson: (1) a plausible-sounding "the AI
 
 **AI mistake or oddity noticed?**
 Yes, mine: jumping to "the LLM hallucinated" as the explanation for unexpected chat output, without first checking the one cheap, decisive, non-LLM source of truth available (the actual Postgres row) before proposing a fix. The lesson generalizes past this one bug: when a chatbot's output looks wrong, check the ground truth (the database, the logs) before assuming the model is the thing that's wrong — the discrepancy might instead be a real feature gap the chatbot exposed rather than caused.
+
+---
+
+### Entry 13 — M5's last item, NL due dates, and an off-by-one-day landmine — 2026-09-06
+
+**Prompt (exact):**
+> lets go for the next phase
+
+**Result obtained (summary):**
+Checked `PROJECT-PLAN.md`'s build order and found M5 already mostly done (tags/priority from M2, confirmation-before-destructive-action and the audit trail from M4) — the one item left was "NL due dates." The chatbot had already been resolving relative dates like "amanhã" correctly in earlier live testing (Entry 12's task got `due_date: 2026-09-06` from "amanhã"), but purely by the model's own unstated assumption about what day "today" is — the system prompt never told it. Fixed properly: `SYSTEM_PROMPT` became `buildSystemPrompt()`, computing the real current date fresh on every request and stating it explicitly ("A data de hoje e {date} ({weekday})"), so relative-date resolution has a correct, explicit anchor instead of an implicit guess. While implementing this, caught a second, more serious latent bug before it ever shipped: the naive way to get "today" (`new Date().toISOString().slice(0,10)`) is always UTC, so it would silently compute the *wrong calendar day* every evening/night in any timezone ahead of UTC (confirmed live: at 23:32 UTC the container said "2026-09-05" while the user's own local clock — per this session's own date context — had already rolled over to "2026-09-06"). Fixed by reading the `Date` object's local year/month/day instead of its UTC ISO string, and by setting `TZ=Europe/Lisbon` on the backend container (plus installing `tzdata` in `backend/Dockerfile`, since Alpine's Node image has none by default and would otherwise silently ignore `TZ` and stay on UTC) — verified by printing the container's local date/weekday and confirming it matched the real one.
+
+**Accepted / Corrected / Rejected:**
+Accepted. Deliberately scoped down from a broader reading of "NL due dates": did not add natural-language parsing to the manual create/edit form's `<input type="date">` field, since that's a native, unambiguous date picker already — swapping it for free-text NL parsing would trade a working, precise control for a fuzzier one with real ambiguity risk, for no clear benefit outside the chat interface where NL dates actually belong. Also did not spend a live DeepSeek call to re-verify the chatbot's relative-date behavior with the new grounding in place, keeping with the "don't spend API calls without asking" rule from Entry 11 — the fix was verified as far as it can be for free (the computed date/weekday is provably correct now), just not re-proven against a live model response.
+
+**Why:**
+"The model happened to get it right once" is not the same as "the feature works" — Entry 12's correct date was luck, not grounding, and the very next day (literally, given the UTC/local mismatch found here) it could have been wrong in a way nobody would notice until a task showed up with the wrong due date. Timezone bugs are a classic case of "invisible until the exact wrong moment" — this one would only ever have manifested for a few hours a day, which is exactly the kind of bug that's worth catching by reasoning about UTC-vs-local explicitly rather than by hoping live testing happens to run during the affected window.
+
+**AI mistake or oddity noticed?**
+A near-miss rather than a shipped mistake: almost used `toISOString()` for "today" without noticing it's UTC-based, which is a common enough JavaScript date pitfall that it was worth pausing on deliberately rather than trusting the first version that ran without erroring — this bug doesn't throw, it just silently computes a plausible-looking wrong answer some of the time, which is worse than a crash for something feeding into an LLM's date arithmetic.
