@@ -35,17 +35,17 @@ Reflects what actually exists as of M2 close-out; `(planned)` marks files that d
 │   │   │   └── migrations/
 │   │   │       ├── 001_create_tasks.sql
 │   │   │       ├── 002_seed_demo_tasks.sql
-│   │   │       ├── 003_create_automations.sql   (planned — M4)
-│   │   │       └── 004_create_audit_log.sql     (planned — M4)
+│   │   │       └── 003_create_audit_log.sql
 │   │   ├── routes/
 │   │   │   ├── tasks.routes.js
-│   │   │   └── chat.routes.js                    (planned — M4)
+│   │   │   └── chat.routes.js
 │   │   ├── controllers/
 │   │   │   ├── tasks.controller.js
-│   │   │   └── chat.controller.js                (planned — M4)
+│   │   │   └── chat.controller.js
 │   │   ├── services/
 │   │   │   ├── tasks.service.js
-│   │   │   └── llm.service.js                    (planned — M4, Claude API + tool definitions)
+│   │   │   ├── llm.service.js                    ← Claude API, tool definitions, confirm flow
+│   │   │   └── audit.service.js                  ← audit_log reads/writes
 │   │   ├── utils/
 │   │   │   └── validation.js
 │   │   └── middleware/
@@ -63,10 +63,11 @@ Reflects what actually exists as of M2 close-out; `(planned)` marks files that d
         ├── main.jsx
         ├── App.jsx                    ← router + nav shell
         ├── api/
-        │   └── tasks.js
+        │   ├── tasks.js
+        │   └── chat.js
         ├── pages/
         │   ├── TasksPage.jsx          ← core task list (route "/")
-        │   └── AssistantPage.jsx      ← chatbot placeholder (route "/assistant", built in M4)
+        │   └── AssistantPage.jsx      ← chat UI (route "/assistant"), built in M4
         ├── components/
         │   ├── NavBar.jsx
         │   ├── TaskForm.jsx
@@ -106,15 +107,7 @@ INSERT INTO tasks (title, status, priority, due_date, tags) VALUES
   ('Rever a interface no browser', 'completed', 'low', NULL, '{}'),
   ('Rever o pull request antes da entrega', 'pending', 'medium', '2026-09-15', '{revisao}');
 
--- 003_create_automations.sql (planned — M4)
-CREATE TABLE automations (
-  id          SERIAL PRIMARY KEY,
-  trigger     TEXT NOT NULL,
-  action      TEXT NOT NULL,
-  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-
--- 004_create_audit_log.sql (planned — M4)
+-- 003_create_audit_log.sql
 CREATE TABLE audit_log (
   id          SERIAL PRIMARY KEY,
   source      TEXT NOT NULL DEFAULT 'chat',
@@ -126,7 +119,7 @@ CREATE TABLE audit_log (
 );
 ```
 
-`automations` and `audit_log` back the chatbot extension and feature-roadmap items 1-2 — skip them if the core-only scope is what ships.
+`audit_log` backs the chatbot extension and feature-roadmap item "audit trail" — every tool call the assistant makes (or proposes) is written here, `result IS NULL` marking a destructive call still waiting on user confirmation. The `automations` table sketched in an earlier draft of this plan (a `trigger`/`action` rules table) was dropped: nothing in M4 or the M5 feature-roadmap list actually consumes it, so it would have been unused scaffolding — cut per the project's own "don't build for hypothetical future requirements" rule rather than added just to match the original numbering.
 
 ---
 
@@ -143,10 +136,14 @@ CREATE TABLE audit_log (
 
 Decision: the brief calls edit/delete optional, but both are fully built — API (implemented, 14 tests) *and* frontend UI: an inline edit form per task row (title/priority/due date/tags) and a delete action behind a styled confirmation dialog (`ConfirmDialog.jsx`, not the native `window.confirm`). Worth calling out explicitly in `RELATORIO.md` as a deliberate above-minimum choice, not scope creep — unlike the Trello-style stretch tier (section 10), this stayed inside the shape of the original CRUD app.
 
-**Chatbot extension:**
-- `POST /api/chat` — `{ message }` → `{ reply, actions_taken?: [{ tool, args, result }] }`
-  - Destructive tools (`delete_task`, `update_task`) return a pending-confirmation state instead of executing immediately (feature-roadmap item 1); a follow-up confirm call executes it.
-  - Every tool call is written to `audit_log` (feature-roadmap item 2).
+**Chatbot extension (M4, implemented):**
+- `POST /api/chat` — `{ message }` → `{ reply, actions_taken: [{ tool, args, result }], requires_confirmation?: { confirmation_token, tool, args, summary } }`
+  - Backed by `llm.service.js`: sends the message + tool definitions (`list_tasks`, `create_task`, `update_task`, `delete_task`) to the Claude API (Messages API, tool use). Only the first tool call per turn is acted on — no multi-step agentic loop — a deliberate scope cut for a take-home, noted in `RELATORIO.md`.
+  - Non-destructive tools (`list_tasks`, `create_task`) execute immediately: the tool result is fed back to Claude for a natural-language reply, and the call is logged to `audit_log` with its result. Tool args still go through the same `validateTaskFields`/`parseId` checks the REST API uses, so a malformed/hallucinated tool call fails cleanly instead of hitting Postgres directly.
+  - Destructive tools (`update_task`, `delete_task`) are **not** executed — a row is written to `audit_log` with `result` left `NULL` and a random `confirmation_token` (UUID, `crypto.randomUUID()`), which is what's returned to the client, not the row's sequential `id` — a Security-review finding: a guessable integer would let anyone iterate small numbers and confirm/cancel *any* pending destructive action, which is a step up in risk from the plain CRUD API even in this no-auth take-home. The reply also now spells out the actual field-by-field diff being proposed (e.g. `prioridade: "media" -> "alta"`), not just "update task #7?", per the same review.
+- `POST /api/chat/confirm` — `{ confirmation_token, confirm: boolean }` → `{ reply, actions_taken? }`. Looks up the pending `audit_log` row by token (must still have `result IS NULL`, else 404 — already resolved or unknown), executes the recorded tool+args only if `confirm: true`, and updates that row's `result` (or `{status:"cancelled"}`) — this is the feature-roadmap "confirmation before destructive action" item. If the target task no longer exists by the time it's confirmed, the reply says so honestly instead of claiming success (Review-QA caught this: the first version always replied "deleted/updated successfully" even when the delete/update was a no-op).
+- Returns 503 with a Portuguese message if `ANTHROPIC_API_KEY` isn't set, instead of crashing the process — the core task app must keep working with no key configured. A failed call to the Claude API itself (rate limit, outage, bad request) is caught and rethrown as a generic 502 rather than relaying the Anthropic SDK's raw error message to the client.
+- Accepted, not fixed, given the take-home's no-auth scope: `/api/chat` has no rate limiting, so any caller can trigger paid Anthropic API calls with no cap beyond the 2000-character message-length check.
 
 ---
 
@@ -239,8 +236,8 @@ One commit per completed-and-reviewed milestone (see Build order below), not one
 2. **M1 — Backend core ✅ verified + reviewed:** `tasks` CRUD API implemented and confirmed live via `docker compose up` (create/list/get/patch/delete/404 all exercised with curl against real Postgres). Enum-cast bug found and fixed (`prompts-file.md` Entry 1). Went through a Security + Review-QA subagent pass afterward: added `backend/src/utils/validation.js`, normalized error responses to stop leaking raw Postgres errors, and replaced the placeholder test with 14 real unit + integration tests, all passing against live Postgres (`prompts-file.md` Entry 2).
 3. **M2 — Frontend core ✅ verified + reviewed + styled + click-tested:** Vite dev server confirmed serving on `:5173`. Design mockup drafted (section 7) and implemented into the real app: global stylesheet, create form (title/priority/due date), status-toggle checkbox, priority badges, due dates, tag pills, empty state. Extended beyond the mockup with: a two-route split (`/` Tasks, `/assistant` a labeled M4 placeholder) via `react-router-dom` so future features don't crowd the core page; a full inline edit UI per task (title/priority/due date/tags) and a delete action behind a styled `ConfirmDialog`, since update/delete are treated as required here (section 3). Actually click-tested via a headless Playwright browser (not just curl) — screenshots confirmed visual fidelity to the mockup, and a scripted run drove real edit-save and delete-confirm clicks through the UI, verifying the changes landed in Postgres. Later extended with client-side status/priority filter dropdowns (`TaskFilters.jsx`) and a full Portuguese UI pass (all labels, badges, empty state, error messages, `<html lang="pt">`, `pt-PT` date formatting) — a deliberate choice given the exercise brief itself is Portuguese in origin.
 4. **M3 — Report discipline check ✅:** `prompts-file.md` confirmed up to date (3 entries); `RELATORIO.md` drafted (bilingual EN/PT, matching `README.md`'s convention), distilling the 3 strongest prompt-log entries plus the required tools/models, accepted-vs-corrected breakdown, and the enum-cast SQL bug as the "AI mistake caught" example.
-5. **M4 — Chatbot extension:** `/api/chat`, tool definitions, `llm.service.js`, migrations `003`/`004`.
-6. **M5 — Feature roadmap:** confirmation-before-destructive-action, audit trail, tags/priority, NL due dates — in that order, stopping whenever time runs out.
+5. **M4 — Chatbot extension ✅ implemented + reviewed:** `POST /api/chat` + `POST /api/chat/confirm`, tool definitions (`list_tasks`/`create_task`/`update_task`/`delete_task`) in `llm.service.js`, `audit.service.js`, migration `003_create_audit_log.sql`. Confirmation-before-destructive-action and the audit trail (M5 items 1-2) landed as part of this milestone rather than separately, since the chat feature needed them to be safe at all. `AssistantPage.jsx` rebuilt as a real chat UI (message bubbles, confirm/cancel buttons on pending destructive actions) replacing the M2 placeholder. Went through a Security + Review-QA subagent pass; fixes made as a result: destructive confirmations now use a random `confirmation_token` (not a guessable sequential id), the confirmation prompt discloses the actual field-by-field diff being proposed, tool arguments are validated the same way the REST API validates them before touching Postgres, Claude API failures are wrapped instead of relaying raw upstream error text, `errorHandler` no longer logs routine 4xx noise, and `/api/chat/confirm` gives an honest "nothing happened" reply instead of a false success when the target task no longer exists. Accepted without fixing, given the take-home's no-auth scope: `/api/chat` has no rate limiting. Not yet verified: an actual live round-trip with a real `ANTHROPIC_API_KEY` (everything else — validation, error paths, confirm/cancel, audit_log correctness — was exercised directly against Postgres and the HTTP layer).
+6. **M5 — Feature roadmap:** tags/priority (done in M2), NL due dates — whatever's left after M4's confirmation/audit-trail items, stopping whenever time runs out.
 7. **M6 — Polish:** final README pass, Security/Review-QA agent pass, finish `RELATORIO.md`.
 
 Core (M0-M2) is the non-negotiable deliverable; everything after M2 is additive and gets cut first if time is short. Commit after each milestone per section 8.

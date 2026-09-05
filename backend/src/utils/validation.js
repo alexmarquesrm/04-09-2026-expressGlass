@@ -39,4 +39,20 @@ function validateTaskFields({ title, description, status, priority, due_date, ta
   }
 }
 
-module.exports = { parseId, validateTaskFields, badRequest };
+function validateChatMessage(message) {
+  if (typeof message !== 'string' || !message.trim()) {
+    throw badRequest('message is required and must be a non-empty string');
+  }
+  if (message.length > 2000) {
+    throw badRequest('message is too long (max 2000 characters)');
+  }
+}
+
+function validateConfirmationToken(token) {
+  if (typeof token !== 'string' || !token.trim()) {
+    throw badRequest('confirmation_token is required and must be a non-empty string');
+  }
+  return token;
+}
+
+module.exports = { parseId, validateTaskFields, validateChatMessage, validateConfirmationToken, badRequest };

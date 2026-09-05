@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert');
-const { parseId, validateTaskFields } = require('../src/utils/validation');
+const { parseId, validateTaskFields, validateChatMessage } = require('../src/utils/validation');
 
 test('parseId accepts positive integers', () => {
   assert.strictEqual(parseId('5'), 5);
@@ -48,4 +48,19 @@ test('validateTaskFields rejects non-array tags', () => {
 
 test('validateTaskFields does not require title when requireTitle is false and title is omitted', () => {
   assert.doesNotThrow(() => validateTaskFields({ status: 'completed' }, { requireTitle: false }));
+});
+
+test('validateChatMessage rejects empty or non-string messages', () => {
+  assert.throws(() => validateChatMessage(''), /message is required/);
+  assert.throws(() => validateChatMessage('   '), /message is required/);
+  assert.throws(() => validateChatMessage(undefined), /message is required/);
+  assert.throws(() => validateChatMessage(42), /message is required/);
+});
+
+test('validateChatMessage rejects messages over 2000 characters', () => {
+  assert.throws(() => validateChatMessage('a'.repeat(2001)), /too long/);
+});
+
+test('validateChatMessage accepts a normal message', () => {
+  assert.doesNotThrow(() => validateChatMessage('cria uma tarefa para amanha'));
 });
