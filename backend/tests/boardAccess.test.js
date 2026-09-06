@@ -122,6 +122,74 @@ test('with two owners, demoting one is allowed, but demoting the last remaining 
   await outsider.agent.delete(`/api/boards/${boardId}`).expect(204);
 });
 
+test('column routes: a non-member is refused, a member can shape the board, only the owner can delete a column', async () => {
+  const created = await owner.agent.post('/api/boards').send({ name: 'Access Board H' }).expect(201);
+  const boardId = created.body.id;
+
+  // a fresh board already has its default columns
+  const columns = await owner.agent.get(`/api/boards/${boardId}/columns`).expect(200);
+  assert.strictEqual(columns.body.length, 3);
+
+  // a stranger sees none of it
+  await outsider.agent.get(`/api/boards/${boardId}/columns`).expect(403);
+  await outsider.agent.post(`/api/boards/${boardId}/columns`).send({ name: 'sneaky' }).expect(403);
+
+  // a member can add and rename columns...
+  await owner.agent.post(`/api/boards/${boardId}/members`).send({ user_id: outsider.userId }).expect(201);
+  const added = await outsider.agent.post(`/api/boards/${boardId}/columns`).send({ name: 'Em revisão' }).expect(201);
+  const renamed = await outsider.agent
+    .patch(`/api/boards/${boardId}/columns/${added.body.id}`)
+    .send({ name: 'A rever' })
+    .expect(200);
+  assert.strictEqual(renamed.body.name, 'A rever');
+
+  // ...but deleting one is owner-only
+  await outsider.agent.delete(`/api/boards/${boardId}/columns/${added.body.id}`).expect(403);
+  await owner.agent.delete(`/api/boards/${boardId}/columns/${added.body.id}`).expect(204);
+
+  await owner.agent.delete(`/api/boards/${boardId}`).expect(204);
+});
+
+test('column routes: a column with cards, and the last column, are both refused deletion over HTTP', async () => {
+  const created = await owner.agent.post('/api/boards').send({ name: 'Access Board I' }).expect(201);
+  const boardId = created.body.id;
+  const columns = await owner.agent.get(`/api/boards/${boardId}/columns`).expect(200);
+  const [first, second, third] = columns.body;
+
+  await owner.agent.post(`/api/boards/${boardId}/tasks`).send({ title: 'Holds the column open' }).expect(201);
+
+  const withTasks = await owner.agent.delete(`/api/boards/${boardId}/columns/${first.id}`).expect(400);
+  assert.match(withTasks.body.error, /still has tasks/);
+
+  await owner.agent.delete(`/api/boards/${boardId}/columns/${second.id}`).expect(204);
+  await owner.agent.delete(`/api/boards/${boardId}/columns/${third.id}`).expect(204);
+
+  const lastOne = await owner.agent.delete(`/api/boards/${boardId}/columns/${first.id}`).expect(400);
+  assert.match(lastOne.body.error, /still has tasks|last column/);
+
+  await owner.agent.delete(`/api/boards/${boardId}`).expect(204);
+});
+
+test('a card cannot be created into a column belonging to someone else\'s board', async () => {
+  const mine = await owner.agent.post('/api/boards').send({ name: 'Access Board J' }).expect(201);
+  const theirs = await outsider.agent.post('/api/boards').send({ name: 'Access Board K' }).expect(201);
+  const theirColumns = await outsider.agent.get(`/api/boards/${theirs.body.id}/columns`).expect(200);
+
+  const res = await owner.agent
+    .post(`/api/boards/${mine.body.id}/tasks`)
+    .send({ title: 'Cross-board card', column_id: theirColumns.body[0].id })
+    .expect(400);
+  assert.match(res.body.error, /column of this board/);
+
+  await owner.agent.delete(`/api/boards/${mine.body.id}`).expect(204);
+  await outsider.agent.delete(`/api/boards/${theirs.body.id}`).expect(204);
+});
+
+test('the chat assistant endpoints require authentication', async () => {
+  await request(app).post('/api/chat').send({ message: 'olá' }).expect(401);
+  await request(app).post('/api/chat/confirm').send({ confirmation_token: 'x', confirm: true }).expect(401);
+});
+
 test.after(async () => {
   await pool.query("DELETE FROM users WHERE email LIKE 'accesstest-%@example.com'");
   await pool.end();

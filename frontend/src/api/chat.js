@@ -4,6 +4,7 @@ export async function sendMessage(message) {
   const res = await fetch(`${API_BASE}/api/chat`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
     body: JSON.stringify({ message }),
   });
   const body = await res.json().catch(() => ({}));
@@ -15,6 +16,7 @@ export async function confirmAction(confirmationToken, confirm) {
   const res = await fetch(`${API_BASE}/api/chat/confirm`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
     body: JSON.stringify({ confirmation_token: confirmationToken, confirm }),
   });
   const body = await res.json().catch(() => ({}));

@@ -32,9 +32,6 @@ export default function NavBar() {
           <NavLink to="/" end style={linkStyle}>
             Tarefas
           </NavLink>
-          <NavLink to="/assistant" style={linkStyle}>
-            Assistente
-          </NavLink>
           <NavLink to="/boards" style={linkStyle}>
             Quadros
           </NavLink>

@@ -415,9 +415,19 @@ body {
   margin-left: 0;
 }
 
+/* Fixed width and no growing: with more than three columns the board scrolls
+   sideways like a real board, instead of wrapping onto a second row where a
+   lone column would stretch to full width. */
+.board-columns {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  overflow-x: auto;
+  padding-bottom: 8px;
+}
+
 .board-column {
-  flex: 1 1 300px;
-  min-width: 280px;
+  flex: 0 0 280px;
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius);
@@ -487,4 +497,172 @@ body {
   font-weight: 800;
   color: #ffffff;
   text-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+}
+
+.chat-fab {
+  position: fixed;
+  right: 32px;
+  bottom: 32px;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  border: none;
+  padding: 0;
+  background: linear-gradient(135deg, var(--color-accent), #3d2fa8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 8px 20px rgba(91, 69, 224, 0.35);
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+  z-index: 20;
+}
+
+.chat-fab:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 26px rgba(91, 69, 224, 0.42);
+}
+
+.chat-panel {
+  position: fixed;
+  right: 32px;
+  bottom: 32px;
+  width: 368px;
+  height: min(580px, calc(100vh - 64px));
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  box-shadow: 0 12px 32px rgba(28, 25, 23, 0.18);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  z-index: 20;
+}
+
+.chat-panel-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.chat-panel-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  overflow-y: auto;
+}
+
+.chat-panel-input {
+  display: flex;
+  gap: 8px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--color-border);
+}
+
+.chat-send {
+  width: 36px;
+  height: 36px;
+  flex-shrink: 0;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: var(--color-accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.chat-send:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.column-menu {
+  position: absolute;
+  top: 40px;
+  right: 12px;
+  width: 176px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  box-shadow: 0 12px 32px rgba(28, 25, 23, 0.18);
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  z-index: 5;
+}
+
+.column-menu button {
+  text-align: left;
+  padding: 8px 10px;
+  border: none;
+  background: transparent;
+  border-radius: 6px;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text);
+  cursor: pointer;
+}
+
+.column-menu button:hover {
+  background: var(--color-bg);
+}
+
+.column-menu button.danger {
+  color: var(--color-priority-high-text);
+}
+
+.column-menu button.danger:hover {
+  background: var(--color-priority-high-bg);
+}
+
+.add-card-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 8px 10px;
+  border: none;
+  background: transparent;
+  border-radius: var(--radius-sm);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--color-muted);
+  cursor: pointer;
+}
+
+.add-card-btn:hover {
+  background: var(--color-bg);
+  color: var(--color-text);
+}
+
+/* Selects inside a card carry real controls (assignee, column) but shouldn't
+   look like a form: they stay quiet until hovered or focused. */
+.card-select {
+  font-family: inherit;
+  font-size: 12px;
+  color: var(--color-muted);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  padding: 3px 4px;
+  max-width: 100%;
+  cursor: pointer;
+}
+
+.card-select:hover {
+  border-color: var(--color-border);
+  background: var(--color-bg);
+}
+
+.card-select:focus {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+  color: var(--color-text);
 }

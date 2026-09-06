@@ -4,7 +4,7 @@ const { validateChatMessage, validateConfirmationToken, badRequest } = require('
 async function sendMessage(req, res, next) {
   try {
     validateChatMessage(req.body.message);
-    const result = await llmService.handleMessage(req.body.message);
+    const result = await llmService.handleMessage(req.body.message, req.user);
     res.json(result);
   } catch (err) {
     next(err);
@@ -17,7 +17,7 @@ async function confirmAction(req, res, next) {
     if (typeof req.body.confirm !== 'boolean') {
       throw badRequest('confirm must be a boolean');
     }
-    const result = await llmService.confirmAction(token, req.body.confirm);
+    const result = await llmService.confirmAction(token, req.body.confirm, req.user);
     res.json(result);
   } catch (err) {
     next(err);

@@ -15,7 +15,7 @@ function parseId(rawId, label = 'task') {
   return id;
 }
 
-function validateTaskFields({ title, description, status, priority, due_date, tags, position, assignee_id }, { requireTitle }) {
+function validateTaskFields({ title, description, status, priority, due_date, tags, position, assignee_id, column_id }, { requireTitle }) {
   if (requireTitle && (typeof title !== 'string' || !title.trim())) {
     throw badRequest('title is required and must be a non-empty string');
   }
@@ -42,6 +42,26 @@ function validateTaskFields({ title, description, status, priority, due_date, ta
   }
   if (assignee_id !== undefined && assignee_id !== null && (!Number.isInteger(assignee_id) || assignee_id <= 0)) {
     throw badRequest('assignee_id must be a positive integer or null');
+  }
+  // No null here, unlike assignee_id: a card always lives in a column, so an
+  // explicit null is a mistake rather than a way to clear the field.
+  if (column_id !== undefined && (!Number.isInteger(column_id) || column_id <= 0)) {
+    throw badRequest('column_id must be a positive integer');
+  }
+}
+
+function validateColumnFields({ name, position }, { requireName }) {
+  if (requireName && (typeof name !== 'string' || !name.trim())) {
+    throw badRequest('name is required and must be a non-empty string');
+  }
+  if (name !== undefined && (typeof name !== 'string' || !name.trim())) {
+    throw badRequest('name must be a non-empty string');
+  }
+  if (name !== undefined && name.length > 60) {
+    throw badRequest('name is too long (max 60 characters)');
+  }
+  if (position !== undefined && (!Number.isInteger(position) || position < 0 || position > 1_000_000_000)) {
+    throw badRequest('position must be a non-negative integer no greater than 1000000000');
   }
 }
 
@@ -75,6 +95,11 @@ const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 function validateRegisterFields({ name, email, password }) {
   if (typeof name !== 'string' || !name.trim()) {
     throw badRequest('name is required and must be a non-empty string');
+  }
+  // Names are shown to the chat assistant (member/user pickers), so an
+  // unbounded name field is a place to park a wall of instruction-shaped text.
+  if (name.length > 80) {
+    throw badRequest('name is too long (max 80 characters)');
   }
   if (typeof email !== 'string' || !EMAIL_PATTERN.test(email)) {
     throw badRequest('email must be a valid email address');
@@ -110,6 +135,7 @@ module.exports = {
   validateChatMessage,
   validateConfirmationToken,
   validateBoardFields,
+  validateColumnFields,
   validateRegisterFields,
   validateLoginFields,
   validateMemberFields,
