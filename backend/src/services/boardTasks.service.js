@@ -1,4 +1,5 @@
 const pool = require('../db/pool');
+const boardMembersService = require('./boardMembers.service');
 
 const SELECT_WITH_ASSIGNEE = `
   SELECT bt.*, u.name AS assignee_name
@@ -15,6 +16,16 @@ function throwIfInvalidAssignee(err) {
   throw err;
 }
 
+async function assertAssigneeIsBoardMember(boardId, assigneeId) {
+  if (!assigneeId) return;
+  const membership = await boardMembersService.getMembership(boardId, assigneeId);
+  if (!membership) {
+    const err = new Error('assignee_id must be a member of this board');
+    err.status = 400;
+    throw err;
+  }
+}
+
 async function listBoardTasks(boardId) {
   const { rows } = await pool.query(
     `${SELECT_WITH_ASSIGNEE} WHERE bt.board_id = $1 ORDER BY bt.status, bt.position, bt.created_at`,
@@ -24,6 +35,7 @@ async function listBoardTasks(boardId) {
 }
 
 async function createBoardTask(boardId, { title, description, due_date, priority, tags, status, assignee_id }) {
+  await assertAssigneeIsBoardMember(boardId, assignee_id);
   try {
     const { rows } = await pool.query(
       `INSERT INTO board_tasks (board_id, title, description, due_date, priority, tags, status, assignee_id, position)
@@ -49,6 +61,10 @@ async function updateBoardTask(boardId, id, fields) {
   const allowed = ['title', 'description', 'status', 'priority', 'due_date', 'tags', 'position', 'assignee_id'];
   const keys = Object.keys(fields).filter((k) => allowed.includes(k));
   if (keys.length === 0) return getBoardTask(boardId, id);
+
+  if (keys.includes('assignee_id')) {
+    await assertAssigneeIsBoardMember(boardId, fields.assignee_id);
+  }
 
   const setClauses = keys.map((key, i) => `${key} = $${i + 3}`);
   setClauses.push('updated_at = now()');

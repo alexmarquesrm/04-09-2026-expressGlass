@@ -1,19 +1,26 @@
 const express = require('express');
 const boardsController = require('../controllers/boards.controller');
 const boardTasksController = require('../controllers/boardTasks.controller');
+const boardMembersController = require('../controllers/boardMembers.controller');
+const requireAuth = require('../middleware/auth.middleware');
+const { requireBoardMember, requireBoardOwner } = require('../middleware/boardAccess.middleware');
 
 const router = express.Router();
 
-router.get('/', boardsController.index);
-router.post('/', boardsController.create);
-router.get('/:id', boardsController.show);
-router.patch('/:id', boardsController.update);
-router.delete('/:id', boardsController.destroy);
+router.get('/', requireAuth, boardsController.index);
+router.post('/', requireAuth, boardsController.create);
+router.get('/:id', requireAuth, requireBoardMember, boardsController.show);
+router.patch('/:id', requireAuth, requireBoardOwner, boardsController.update);
+router.delete('/:id', requireAuth, requireBoardOwner, boardsController.destroy);
 
-router.get('/:boardId/tasks', boardTasksController.index);
-router.post('/:boardId/tasks', boardTasksController.create);
-router.get('/:boardId/tasks/:id', boardTasksController.show);
-router.patch('/:boardId/tasks/:id', boardTasksController.update);
-router.delete('/:boardId/tasks/:id', boardTasksController.destroy);
+router.get('/:id/members', requireAuth, requireBoardMember, boardMembersController.index);
+router.post('/:id/members', requireAuth, requireBoardOwner, boardMembersController.create);
+router.delete('/:id/members/:userId', requireAuth, requireBoardOwner, boardMembersController.destroy);
+
+router.get('/:boardId/tasks', requireAuth, requireBoardMember, boardTasksController.index);
+router.post('/:boardId/tasks', requireAuth, requireBoardMember, boardTasksController.create);
+router.get('/:boardId/tasks/:id', requireAuth, requireBoardMember, boardTasksController.show);
+router.patch('/:boardId/tasks/:id', requireAuth, requireBoardMember, boardTasksController.update);
+router.delete('/:boardId/tasks/:id', requireAuth, requireBoardMember, boardTasksController.destroy);
 
 module.exports = router;

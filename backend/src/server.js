@@ -29,7 +29,9 @@ app.use('/api/users', usersRoutes);
 
 app.use(errorHandler);
 
-const port = process.env.PORT || 3001;
-app.listen(port, () => console.log(`Backend listening on :${port}`));
+if (require.main === module) {
+  const port = process.env.PORT || 3001;
+  app.listen(port, () => console.log(`Backend listening on :${port}`));
+}
 
 module.exports = app;

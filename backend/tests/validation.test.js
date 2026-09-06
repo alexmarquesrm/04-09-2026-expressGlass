@@ -7,6 +7,7 @@ const {
   validateBoardFields,
   validateRegisterFields,
   validateLoginFields,
+  validateMemberFields,
 } = require('../src/utils/validation');
 
 test('parseId accepts positive integers', () => {
@@ -131,4 +132,18 @@ test('validateRegisterFields accepts a valid payload', () => {
 test('validateLoginFields requires email and password', () => {
   assert.throws(() => validateLoginFields({ password: 'x' }), /email is required/);
   assert.throws(() => validateLoginFields({ email: 'a@b.com' }), /password is required/);
+});
+
+test('validateMemberFields requires a positive integer user_id', () => {
+  assert.throws(() => validateMemberFields({}), /user_id is required/);
+  assert.throws(() => validateMemberFields({ user_id: 'abc' }), /user_id is required/);
+  assert.throws(() => validateMemberFields({ user_id: 0 }), /user_id is required/);
+  assert.throws(() => validateMemberFields({ user_id: -1 }), /user_id is required/);
+});
+
+test('validateMemberFields rejects an invalid role but allows role to be omitted', () => {
+  assert.throws(() => validateMemberFields({ user_id: 1, role: 'admin' }), /role must be one of/);
+  assert.doesNotThrow(() => validateMemberFields({ user_id: 1 }));
+  assert.doesNotThrow(() => validateMemberFields({ user_id: 1, role: 'owner' }));
+  assert.doesNotThrow(() => validateMemberFields({ user_id: 1, role: 'member' }));
 });

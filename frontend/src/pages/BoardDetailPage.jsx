@@ -1,10 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { fetchBoard, fetchBoardTasks, createBoardTask, updateBoardTask, deleteBoardTask } from '../api/boards.js';
+import { fetchMembers, addMember, removeMember } from '../api/boardMembers.js';
 import { fetchUsers } from '../api/users.js';
+import { useAuth } from '../context/AuthContext.jsx';
 import ConfirmDialog from '../components/ConfirmDialog.jsx';
 
 const PRIORITY_LABELS = { low: 'Baixa', medium: 'Média', high: 'Alta' };
+const ROLE_LABELS = { owner: 'Dono', member: 'Membro' };
 const COLUMNS = [
   { status: 'pending', label: 'Pendente' },
   { status: 'completed', label: 'Concluída' },
@@ -12,10 +15,13 @@ const COLUMNS = [
 
 export default function BoardDetailPage() {
   const { id } = useParams();
+  const { user, loading: authLoading } = useAuth();
   const [board, setBoard] = useState(null);
-  const [notFound, setNotFound] = useState(false);
+  const [accessErrorStatus, setAccessErrorStatus] = useState(null);
   const [tasks, setTasks] = useState([]);
   const [users, setUsers] = useState([]);
+  const [members, setMembers] = useState([]);
+  const [newMemberId, setNewMemberId] = useState('');
   const [title, setTitle] = useState('');
   const [priority, setPriority] = useState('medium');
   const [assigneeId, setAssigneeId] = useState('');
@@ -26,17 +32,21 @@ export default function BoardDetailPage() {
   tasksRef.current = tasks;
 
   useEffect(() => {
+    if (!user) return;
     setBoard(null);
-    setNotFound(false);
+    setAccessErrorStatus(null);
     fetchBoard(id)
-      .then(setBoard)
+      .then((b) => {
+        setBoard(b);
+        fetchBoardTasks(id).then(setTasks).catch((err) => setError(err.message));
+        fetchMembers(id).then(setMembers).catch(() => setMembers([]));
+      })
       .catch((err) => {
         setError(err.message);
-        setNotFound(true);
+        setAccessErrorStatus(err.status || 500);
       });
-    fetchBoardTasks(id).then(setTasks).catch((err) => setError(err.message));
     fetchUsers().then(setUsers).catch(() => setUsers([]));
-  }, [id]);
+  }, [id, user]);
 
   async function handleCreate(e) {
     e.preventDefault();
@@ -58,6 +68,30 @@ export default function BoardDetailPage() {
     try {
       const updated = await updateBoardTask(id, taskId, { assignee_id: nextAssigneeId });
       setTasks((prev) => prev.map((t) => (t.id === taskId ? updated : t)));
+      setError(null);
+    } catch (err) {
+      setError(err.message);
+    }
+  }
+
+  async function handleAddMember(e) {
+    e.preventDefault();
+    if (!newMemberId) return;
+    try {
+      await addMember(id, Number(newMemberId));
+      const fresh = await fetchMembers(id);
+      setMembers(fresh);
+      setNewMemberId('');
+      setError(null);
+    } catch (err) {
+      setError(err.message);
+    }
+  }
+
+  async function handleRemoveMember(userId) {
+    try {
+      await removeMember(id, userId);
+      setMembers((prev) => prev.filter((m) => m.user_id !== userId));
       setError(null);
     } catch (err) {
       setError(err.message);
@@ -131,6 +165,47 @@ export default function BoardDetailPage() {
     }
   }
 
+  if (authLoading) return null;
+
+  if (!user) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+        <Link to="/boards" style={{ fontSize: 13, color: 'var(--color-muted)', textDecoration: 'none' }}>
+          ← Quadros
+        </Link>
+        <div className="card" style={{ padding: '48px 20px', textAlign: 'center', color: 'var(--color-muted)', fontSize: 14 }}>
+          Inicia sessão para ver este quadro.{' '}
+          <Link to="/login" style={{ color: 'var(--color-accent)', fontWeight: 700 }}>
+            Iniciar sessão
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
+  if (accessErrorStatus) {
+    const message =
+      accessErrorStatus === 404
+        ? 'Quadro não encontrado.'
+        : accessErrorStatus === 403
+        ? 'Não tens acesso a este quadro.'
+        : 'Não foi possível obter o quadro.';
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+        <Link to="/boards" style={{ fontSize: 13, color: 'var(--color-muted)', textDecoration: 'none' }}>
+          ← Quadros
+        </Link>
+        <div className="card" style={{ padding: '48px 20px', textAlign: 'center', color: 'var(--color-muted)', fontSize: 14 }}>
+          {message}
+        </div>
+      </div>
+    );
+  }
+
+  const isOwner = board && board.my_role === 'owner';
+  const memberIds = new Set(members.map((m) => m.user_id));
+  const addableUsers = users.filter((u) => !memberIds.has(u.id));
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
       <div>
@@ -138,13 +213,62 @@ export default function BoardDetailPage() {
           ← Quadros
         </Link>
         <h1 style={{ margin: '4px 0 0', fontSize: 26, fontWeight: 800, letterSpacing: '-0.01em' }}>
-          {board ? board.name : notFound ? 'Quadro não encontrado' : 'A carregar...'}
+          {board ? board.name : 'A carregar...'}
         </h1>
       </div>
 
       {error && (
         <div className="card" style={{ padding: 14, color: 'var(--color-priority-high-text)', fontSize: 13 }}>
           {error}
+        </div>
+      )}
+
+      {board && (
+        <div className="card" style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--color-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+            Membros
+          </div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+            {members.map((m) => (
+              <span
+                key={m.user_id}
+                className="tag-pill"
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+              >
+                {m.name} · {ROLE_LABELS[m.role] || m.role}
+                {isOwner && (
+                  <button
+                    type="button"
+                    onClick={() => handleRemoveMember(m.user_id)}
+                    style={{ border: 'none', background: 'transparent', color: 'inherit', cursor: 'pointer', padding: 0, fontSize: 12 }}
+                    aria-label={`Remover ${m.name}`}
+                  >
+                    ✕
+                  </button>
+                )}
+              </span>
+            ))}
+          </div>
+          {isOwner && addableUsers.length > 0 && (
+            <form onSubmit={handleAddMember} style={{ display: 'flex', gap: 8 }}>
+              <select
+                className="field-sm"
+                aria-label="Adicionar membro"
+                value={newMemberId}
+                onChange={(e) => setNewMemberId(e.target.value)}
+              >
+                <option value="">Adicionar membro...</option>
+                {addableUsers.map((u) => (
+                  <option key={u.id} value={u.id}>
+                    {u.name}
+                  </option>
+                ))}
+              </select>
+              <button className="btn-secondary" style={{ padding: '4px 10px', fontSize: 12 }} type="submit" disabled={!newMemberId}>
+                Adicionar membro
+              </button>
+            </form>
+          )}
         </div>
       )}
 

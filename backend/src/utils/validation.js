@@ -84,6 +84,17 @@ function validateRegisterFields({ name, email, password }) {
   }
 }
 
+const BOARD_ROLES = ['owner', 'member'];
+
+function validateMemberFields({ user_id, role }) {
+  if (!Number.isInteger(user_id) || user_id <= 0) {
+    throw badRequest('user_id is required and must be a positive integer');
+  }
+  if (role !== undefined && !BOARD_ROLES.includes(role)) {
+    throw badRequest(`role must be one of: ${BOARD_ROLES.join(', ')}`);
+  }
+}
+
 function validateLoginFields({ email, password }) {
   if (typeof email !== 'string' || !email.trim()) {
     throw badRequest('email is required');
@@ -101,5 +112,6 @@ module.exports = {
   validateBoardFields,
   validateRegisterFields,
   validateLoginFields,
+  validateMemberFields,
   badRequest,
 };
