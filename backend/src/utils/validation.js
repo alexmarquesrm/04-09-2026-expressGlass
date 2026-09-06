@@ -19,7 +19,7 @@ function parseId(rawId, label = 'task') {
 }
 
 function validateTaskFields(
-  { title, description, status, priority, due_date, tags, position, assignee_id, column_id, labels },
+  { title, description, status, priority, due_date, tags, position, assignee_ids, column_id, labels },
   { requireTitle }
 ) {
   if (requireTitle && (typeof title !== 'string' || !title.trim())) {
@@ -46,8 +46,13 @@ function validateTaskFields(
   if (position !== undefined && (!Number.isInteger(position) || position < 0 || position > 1_000_000_000)) {
     throw badRequest('position must be a non-negative integer no greater than 1000000000');
   }
-  if (assignee_id !== undefined && assignee_id !== null && (!Number.isInteger(assignee_id) || assignee_id <= 0)) {
-    throw badRequest('assignee_id must be a positive integer or null');
+  if (assignee_ids !== undefined) {
+    if (!Array.isArray(assignee_ids) || !assignee_ids.every((id) => Number.isInteger(id) && id > 0)) {
+      throw badRequest('assignee_ids must be an array of positive integers');
+    }
+    if (new Set(assignee_ids).size !== assignee_ids.length) {
+      throw badRequest('assignee_ids must not contain duplicates');
+    }
   }
   // No null here, unlike assignee_id: a card always lives in a column, so an
   // explicit null is a mistake rather than a way to clear the field.

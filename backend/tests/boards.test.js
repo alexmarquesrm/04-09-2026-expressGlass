@@ -101,72 +101,103 @@ test('due_date on a board task round-trips without shifting a day', async () => 
   await boardsService.deleteBoard(board.id);
 });
 
-test('a board task can be assigned to a board member, and the join returns the assignee name', async () => {
+test('a board task can carry several assignees, returned with their names', async () => {
   const board = await boardsService.createBoard({ name: 'Assignment test board' }, owner.id);
-  const user = await makeUser('Assignee Person');
-  await boardMembersService.addMember(board.id, user.id, 'member');
+  const userA = await makeUser('Assignee Person');
+  const userB = await makeUser('Second Person');
+  await boardMembersService.addMember(board.id, userA.id, 'member');
+  await boardMembersService.addMember(board.id, userB.id, 'member');
 
-  const task = await boardTasksService.createBoardTask(board.id, { title: 'Assigned task', assignee_id: user.id });
-  assert.strictEqual(task.assignee_id, user.id);
-  assert.strictEqual(task.assignee_name, 'Assignee Person');
+  const task = await boardTasksService.createBoardTask(board.id, {
+    title: 'Assigned task',
+    assignee_ids: [userA.id, userB.id],
+  });
+  assert.deepStrictEqual(task.assignees.map((a) => a.name), ['Assignee Person', 'Second Person']);
 
   const fetched = await boardTasksService.getBoardTask(board.id, task.id);
-  assert.strictEqual(fetched.assignee_name, 'Assignee Person');
+  assert.deepStrictEqual(fetched.assignees.map((a) => a.user_id).sort(), [userA.id, userB.id].sort());
+
+  const listed = await boardTasksService.listBoardTasks(board.id);
+  assert.strictEqual(listed[0].assignees.length, 2);
 
   await boardsService.deleteBoard(board.id);
-  await pool.query('DELETE FROM users WHERE id = $1', [user.id]);
+  await pool.query('DELETE FROM users WHERE id = ANY($1)', [[userA.id, userB.id]]);
 });
 
-test('creating a task with a nonexistent assignee_id is rejected with a 400, not a raw DB error', async () => {
+test('a task with nobody on it carries an empty assignees array, not null', async () => {
+  const board = await boardsService.createBoard({ name: 'Unassigned test board' }, owner.id);
+  const task = await boardTasksService.createBoardTask(board.id, { title: 'Nobody on this' });
+  assert.deepStrictEqual(task.assignees, []);
+
+  const listed = await boardTasksService.listBoardTasks(board.id);
+  assert.deepStrictEqual(listed[0].assignees, []);
+
+  await boardsService.deleteBoard(board.id);
+});
+
+test('creating a task with a nonexistent assignee id is rejected with a 400, not a raw DB error', async () => {
   const board = await boardsService.createBoard({ name: 'Bad assignee test board' }, owner.id);
   await assert.rejects(
-    () => boardTasksService.createBoardTask(board.id, { title: 'Bad assignee', assignee_id: 999999 }),
+    () => boardTasksService.createBoardTask(board.id, { title: 'Bad assignee', assignee_ids: [999999] }),
     (err) => err.status === 400
   );
   await boardsService.deleteBoard(board.id);
 });
 
-test('creating a task with an assignee who exists but is not a board member is rejected with a 400', async () => {
+test('a single non-member among several assignees rejects the whole assignment', async () => {
   const board = await boardsService.createBoard({ name: 'Non-member assignee test board' }, owner.id);
+  const member = await makeUser('Real Member');
   const outsider = await makeUser('Not A Member');
+  await boardMembersService.addMember(board.id, member.id, 'member');
+
   await assert.rejects(
-    () => boardTasksService.createBoardTask(board.id, { title: 'Bad assignee', assignee_id: outsider.id }),
+    () => boardTasksService.createBoardTask(board.id, { title: 'Bad assignee', assignee_ids: [member.id, outsider.id] }),
     (err) => err.status === 400 && /must be a member of this board/.test(err.message)
   );
+
+  // and nothing was half-written
+  assert.deepStrictEqual(await boardTasksService.listBoardTasks(board.id), []);
+
   await boardsService.deleteBoard(board.id);
-  await pool.query('DELETE FROM users WHERE id = $1', [outsider.id]);
+  await pool.query('DELETE FROM users WHERE id = ANY($1)', [[member.id, outsider.id]]);
 });
 
-test('deleting an assigned user sets the task assignee_id to null instead of blocking the deletion', async () => {
+test('deleting a user removes them from a card instead of blocking the deletion', async () => {
   const board = await boardsService.createBoard({ name: 'Assignee deletion test board' }, owner.id);
-  const user = await makeUser('Soon Deleted');
-  await boardMembersService.addMember(board.id, user.id, 'member');
-  const task = await boardTasksService.createBoardTask(board.id, { title: 'Task with a doomed assignee', assignee_id: user.id });
+  const staying = await makeUser('Still Here');
+  const going = await makeUser('Soon Deleted');
+  await boardMembersService.addMember(board.id, staying.id, 'member');
+  await boardMembersService.addMember(board.id, going.id, 'member');
+  const task = await boardTasksService.createBoardTask(board.id, {
+    title: 'Task with a doomed assignee',
+    assignee_ids: [staying.id, going.id],
+  });
 
-  await pool.query('DELETE FROM users WHERE id = $1', [user.id]);
+  await pool.query('DELETE FROM users WHERE id = $1', [going.id]);
 
   const afterUserDeleted = await boardTasksService.getBoardTask(board.id, task.id);
-  assert.strictEqual(afterUserDeleted.assignee_id, null);
-  assert.strictEqual(afterUserDeleted.assignee_name, null);
+  assert.deepStrictEqual(afterUserDeleted.assignees.map((a) => a.user_id), [staying.id]);
 
   await boardsService.deleteBoard(board.id);
+  await pool.query('DELETE FROM users WHERE id = $1', [staying.id]);
 });
 
-test('reassigning a task via updateBoardTask updates the assignee join', async () => {
+test('updating assignee_ids replaces the whole set, and an empty array clears it', async () => {
   const board = await boardsService.createBoard({ name: 'Reassignment test board' }, owner.id);
   const userA = await makeUser('User A');
   const userB = await makeUser('User B');
   await boardMembersService.addMember(board.id, userA.id, 'member');
   await boardMembersService.addMember(board.id, userB.id, 'member');
-  const task = await boardTasksService.createBoardTask(board.id, { title: 'Reassign me', assignee_id: userA.id });
+  const task = await boardTasksService.createBoardTask(board.id, { title: 'Reassign me', assignee_ids: [userA.id] });
 
-  const reassigned = await boardTasksService.updateBoardTask(board.id, task.id, { assignee_id: userB.id });
-  assert.strictEqual(reassigned.assignee_id, userB.id);
-  assert.strictEqual(reassigned.assignee_name, 'User B');
+  const both = await boardTasksService.updateBoardTask(board.id, task.id, { assignee_ids: [userA.id, userB.id] });
+  assert.strictEqual(both.assignees.length, 2);
 
-  const unassigned = await boardTasksService.updateBoardTask(board.id, task.id, { assignee_id: null });
-  assert.strictEqual(unassigned.assignee_id, null);
-  assert.strictEqual(unassigned.assignee_name, null);
+  const onlyB = await boardTasksService.updateBoardTask(board.id, task.id, { assignee_ids: [userB.id] });
+  assert.deepStrictEqual(onlyB.assignees.map((a) => a.name), ['User B']);
+
+  const nobody = await boardTasksService.updateBoardTask(board.id, task.id, { assignee_ids: [] });
+  assert.deepStrictEqual(nobody.assignees, []);
 
   await boardsService.deleteBoard(board.id);
   await pool.query('DELETE FROM users WHERE id = ANY($1)', [[userA.id, userB.id]]);

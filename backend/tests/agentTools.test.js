@@ -124,7 +124,7 @@ test('the 403 for a board you cannot see does not disclose its name', async () =
 
 test('the assistant cannot assign a card to someone who is not on the board', async () => {
   await assert.rejects(
-    () => agentTools.executeTool('create_board_task', { board_id: board.id, title: 'Bad assignee', assignee_id: stranger.id }, owner),
+    () => agentTools.executeTool('create_board_task', { board_id: board.id, title: 'Bad assignee', assignee_ids: [stranger.id] }, owner),
     /must be a member of this board/
   );
 });
@@ -253,9 +253,9 @@ test('list_my_board_tasks returns only cards assigned to the caller, across boar
   const second = await boardsService.createBoard({ name: 'Agent second board' }, owner.id);
   await boardMembersService.addMember(board.id, stranger.id, 'member');
 
-  const mineHere = await boardTasksService.createBoardTask(board.id, { title: 'Meu cartao A', assignee_id: owner.id });
-  const mineThere = await boardTasksService.createBoardTask(second.id, { title: 'Meu cartao B', assignee_id: owner.id });
-  await boardTasksService.createBoardTask(board.id, { title: 'Do outro', assignee_id: stranger.id });
+  const mineHere = await boardTasksService.createBoardTask(board.id, { title: 'Meu cartao A', assignee_ids: [owner.id] });
+  const mineThere = await boardTasksService.createBoardTask(second.id, { title: 'Meu cartao B', assignee_ids: [owner.id] });
+  await boardTasksService.createBoardTask(board.id, { title: 'Do outro', assignee_ids: [stranger.id] });
   await boardTasksService.createBoardTask(board.id, { title: 'De ninguem' });
 
   const mine = await agentTools.executeTool('list_my_board_tasks', {}, owner);

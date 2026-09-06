@@ -2,28 +2,42 @@ const pool = require('../db/pool');
 const boardMembersService = require('./boardMembers.service');
 const boardColumnsService = require('./boardColumns.service');
 
-const SELECT_WITH_ASSIGNEE = `
-  SELECT bt.*, u.name AS assignee_name
-  FROM board_tasks bt
-  LEFT JOIN users u ON u.id = bt.assignee_id
+// Assignees come back as an array on every card, ordered by name so the UI
+// renders them consistently. COALESCE keeps it an empty array rather than
+// [null] for a card nobody is on.
+const ASSIGNEES_SUBQUERY = `
+  COALESCE((
+    SELECT json_agg(json_build_object('user_id', u.id, 'name', u.name) ORDER BY u.name)
+    FROM board_task_assignees bta
+    JOIN users u ON u.id = bta.user_id
+    WHERE bta.task_id = bt.id
+  ), '[]'::json) AS assignees
 `;
 
-function throwIfInvalidAssignee(err) {
-  if (err.code === '23503' && err.constraint && err.constraint.includes('assignee_id')) {
-    const badRef = new Error('assignee_id does not reference an existing user');
-    badRef.status = 400;
-    throw badRef;
-  }
-  throw err;
-}
-
-async function assertAssigneeIsBoardMember(boardId, assigneeId) {
-  if (!assigneeId) return;
-  const membership = await boardMembersService.getMembership(boardId, assigneeId);
-  if (!membership) {
-    const err = new Error('assignee_id must be a member of this board');
+async function assertAssigneesAreBoardMembers(boardId, assigneeIds) {
+  if (!assigneeIds || assigneeIds.length === 0) return;
+  const { rows } = await pool.query(
+    'SELECT user_id FROM board_members WHERE board_id = $1 AND user_id = ANY($2::int[])',
+    [boardId, assigneeIds]
+  );
+  const members = new Set(rows.map((r) => r.user_id));
+  const outsider = assigneeIds.find((id) => !members.has(id));
+  if (outsider !== undefined) {
+    const err = new Error('every assignee must be a member of this board');
     err.status = 400;
     throw err;
+  }
+}
+
+// Replaces the whole assignee set for a card in one statement pair, so a card
+// never briefly has nobody on it while an update is in flight.
+async function replaceAssignees(client, taskId, assigneeIds) {
+  await client.query('DELETE FROM board_task_assignees WHERE task_id = $1', [taskId]);
+  if (assigneeIds.length > 0) {
+    await client.query(
+      'INSERT INTO board_task_assignees (task_id, user_id) SELECT $1, unnest($2::int[])',
+      [taskId, assigneeIds]
+    );
   }
 }
 
@@ -51,9 +65,8 @@ async function resolveColumnId(boardId, columnId) {
 
 async function listBoardTasks(boardId) {
   const { rows } = await pool.query(
-    `SELECT bt.*, u.name AS assignee_name, bc.name AS column_name
+    `SELECT bt.*, bc.name AS column_name, ${ASSIGNEES_SUBQUERY}
      FROM board_tasks bt
-     LEFT JOIN users u ON u.id = bt.assignee_id
      JOIN board_columns bc ON bc.id = bt.column_id
      WHERE bt.board_id = $1
      ORDER BY bc.position, bc.id, bt.position, bt.created_at`,
@@ -62,56 +75,69 @@ async function listBoardTasks(boardId) {
   return rows;
 }
 
-async function createBoardTask(boardId, { title, description, due_date, priority, tags, status, assignee_id, column_id, labels }) {
-  await assertAssigneeIsBoardMember(boardId, assignee_id);
+async function getBoardTask(boardId, id) {
+  const { rows } = await pool.query(
+    `SELECT bt.*, ${ASSIGNEES_SUBQUERY} FROM board_tasks bt WHERE bt.id = $1 AND bt.board_id = $2`,
+    [id, boardId]
+  );
+  return rows[0] || null;
+}
+
+async function createBoardTask(boardId, { title, description, due_date, priority, tags, status, assignee_ids, column_id, labels }) {
+  const assignees = assignee_ids || [];
+  await assertAssigneesAreBoardMembers(boardId, assignees);
   const columnId = await resolveColumnId(boardId, column_id);
+
+  const client = await pool.connect();
   try {
-    const { rows } = await pool.query(
-      `INSERT INTO board_tasks (board_id, title, description, due_date, priority, tags, status, assignee_id, column_id, labels, position)
+    await client.query('BEGIN');
+    const { rows } = await client.query(
+      `INSERT INTO board_tasks (board_id, title, description, due_date, priority, tags, status, column_id, labels, position)
        VALUES (
-         $1, $2, $3, $4, COALESCE($5::task_priority, 'medium'), COALESCE($6::text[], '{}'), COALESCE($7::task_status, 'pending'), $8, $9,
-         COALESCE($10::text[], '{}'),
-         (SELECT COALESCE(MAX(position), -10) + 10 FROM board_tasks WHERE column_id = $9)
+         $1, $2, $3, $4, COALESCE($5::task_priority, 'medium'), COALESCE($6::text[], '{}'), COALESCE($7::task_status, 'pending'), $8,
+         COALESCE($9::text[], '{}'),
+         (SELECT COALESCE(MAX(position), -10) + 10 FROM board_tasks WHERE column_id = $8)
        )
        RETURNING id`,
-      [boardId, title, description || null, due_date || null, priority || null, tags || null, status || null, assignee_id || null, columnId, labels || null]
+      [boardId, title, description || null, due_date || null, priority || null, tags || null, status || null, columnId, labels || null]
     );
+    await replaceAssignees(client, rows[0].id, assignees);
+    await client.query('COMMIT');
     return getBoardTask(boardId, rows[0].id);
   } catch (err) {
-    throwIfInvalidAssignee(err);
+    await client.query('ROLLBACK').catch(() => {});
+    throw err;
+  } finally {
+    client.release();
   }
 }
 
-// Every card assigned to one person, across all the boards they belong to.
-// The board_members join matters: being removed from a board must stop its
-// cards showing up here, even if the assignment row was left behind.
+// Every card one person is on, across all the boards they belong to. The
+// board_members join matters: being removed from a board must stop its cards
+// showing up here, even if the assignment row was left behind.
 async function listTasksAssignedTo(userId) {
   const { rows } = await pool.query(
-    `SELECT bt.*, b.name AS board_name, bc.name AS column_name, u.name AS assignee_name
+    `SELECT bt.*, b.name AS board_name, bc.name AS column_name, ${ASSIGNEES_SUBQUERY}
      FROM board_tasks bt
      JOIN boards b ON b.id = bt.board_id
      JOIN board_columns bc ON bc.id = bt.column_id
      JOIN board_members bm ON bm.board_id = bt.board_id AND bm.user_id = $1
-     LEFT JOIN users u ON u.id = bt.assignee_id
-     WHERE bt.assignee_id = $1
+     JOIN board_task_assignees mine ON mine.task_id = bt.id AND mine.user_id = $1
      ORDER BY b.name, bc.position, bt.position`,
     [userId]
   );
   return rows;
 }
 
-async function getBoardTask(boardId, id) {
-  const { rows } = await pool.query(`${SELECT_WITH_ASSIGNEE} WHERE bt.id = $1 AND bt.board_id = $2`, [id, boardId]);
-  return rows[0] || null;
-}
-
 async function updateBoardTask(boardId, id, fields) {
-  const allowed = ['title', 'description', 'status', 'priority', 'due_date', 'tags', 'position', 'assignee_id', 'column_id', 'labels'];
-  const keys = Object.keys(fields).filter((k) => allowed.includes(k));
-  if (keys.length === 0) return getBoardTask(boardId, id);
+  const columnFields = ['title', 'description', 'status', 'priority', 'due_date', 'tags', 'position', 'column_id', 'labels'];
+  const keys = Object.keys(fields).filter((k) => columnFields.includes(k));
+  const changingAssignees = Object.prototype.hasOwnProperty.call(fields, 'assignee_ids');
+  if (keys.length === 0 && !changingAssignees) return getBoardTask(boardId, id);
 
-  if (keys.includes('assignee_id')) {
-    await assertAssigneeIsBoardMember(boardId, fields.assignee_id);
+  const assignees = changingAssignees ? fields.assignee_ids || [] : null;
+  if (changingAssignees) {
+    await assertAssigneesAreBoardMembers(boardId, assignees);
   }
 
   // Resolve rather than only validate, so column_id can never be written back
@@ -136,19 +162,42 @@ async function updateBoardTask(boardId, id, fields) {
     }
   }
 
-  const setClauses = keys.map((key, i) => `${key} = $${i + 3}`);
-  setClauses.push('updated_at = now()');
-  const values = keys.map((key) => resolved[key]);
-
+  const client = await pool.connect();
   try {
-    const { rows } = await pool.query(
-      `UPDATE board_tasks SET ${setClauses.join(', ')} WHERE id = $1 AND board_id = $2 RETURNING id`,
-      [id, boardId, ...values]
-    );
-    if (rows.length === 0) return null;
+    await client.query('BEGIN');
+
+    if (keys.length > 0) {
+      const setClauses = keys.map((key, i) => `${key} = $${i + 3}`);
+      setClauses.push('updated_at = now()');
+      const values = keys.map((key) => resolved[key]);
+      const { rows } = await client.query(
+        `UPDATE board_tasks SET ${setClauses.join(', ')} WHERE id = $1 AND board_id = $2 RETURNING id`,
+        [id, boardId, ...values]
+      );
+      if (rows.length === 0) {
+        await client.query('ROLLBACK');
+        return null;
+      }
+    } else {
+      const { rows } = await client.query('SELECT id FROM board_tasks WHERE id = $1 AND board_id = $2', [id, boardId]);
+      if (rows.length === 0) {
+        await client.query('ROLLBACK');
+        return null;
+      }
+      await client.query('UPDATE board_tasks SET updated_at = now() WHERE id = $1', [id]);
+    }
+
+    if (changingAssignees) {
+      await replaceAssignees(client, id, assignees);
+    }
+
+    await client.query('COMMIT');
     return getBoardTask(boardId, id);
   } catch (err) {
-    throwIfInvalidAssignee(err);
+    await client.query('ROLLBACK').catch(() => {});
+    throw err;
+  } finally {
+    client.release();
   }
 }
 

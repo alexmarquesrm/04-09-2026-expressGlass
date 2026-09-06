@@ -54,7 +54,7 @@ const FIELD_LABELS = {
   priority: 'prioridade',
   due_date: 'data limite',
   tags: 'etiquetas',
-  assignee_id: 'responsavel',
+  assignee_ids: 'responsaveis',
   column_id: 'coluna',
   position: 'posicao',
 };
@@ -109,7 +109,7 @@ async function buildIdLabels(boardId) {
   ]);
   return {
     column_id: new Map(columns.map((c) => [c.id, c.name])),
-    assignee_id: new Map(members.map((m) => [m.user_id, m.name])),
+    assignee_ids: new Map(members.map((m) => [m.user_id, m.name])),
   };
 }
 
@@ -117,13 +117,22 @@ function labelFor(key, value, labels) {
   const map = labels[key];
   if (!map) return formatValue(value);
   if (value === null || value === undefined) return '(ninguem)';
+  // assignee_ids is a list on both sides of the diff, so name every one of them
+  // rather than printing raw ids the user has no way to read.
+  if (Array.isArray(value)) {
+    return value.length === 0 ? '(ninguem)' : value.map((v) => map.get(v) || formatValue(v)).join(', ');
+  }
   return map.get(value) || formatValue(value);
 }
 
 function describeChanges(task, input, labels) {
   return Object.keys(input)
     .filter((key) => key !== 'id' && key !== 'board_id')
-    .map((key) => `${FIELD_LABELS[key] || key}: "${labelFor(key, task[key], labels)}" -> "${labelFor(key, input[key], labels)}"`);
+    .map((key) => {
+      // The card carries assignees as objects; the change carries ids.
+      const before = key === 'assignee_ids' ? (task.assignees || []).map((a) => a.user_id) : task[key];
+      return `${FIELD_LABELS[key] || key}: "${labelFor(key, before, labels)}" -> "${labelFor(key, input[key], labels)}"`;
+    });
 }
 
 async function loadConfirmationTarget(call, user) {

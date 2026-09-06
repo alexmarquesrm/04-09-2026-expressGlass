@@ -134,7 +134,7 @@ const TOOLS = [
     function: {
       name: 'list_board_tasks',
       description:
-        'List the cards on a board. Each card carries column_id/column_name (where it is on the board) and assignee_id/assignee_name.',
+        'List the cards on a board. Each card carries column_id/column_name (where it is on the board) and an assignees array of {user_id, name}.',
       parameters: { type: 'object', properties: { board_id: { type: 'integer' } }, required: ['board_id'] },
     },
   },
@@ -152,7 +152,7 @@ const TOOLS = [
     function: {
       name: 'create_board_task',
       description:
-        'Create a card on a board. Goes in the first column unless column_id is given. assignee_id must be a member of the board.',
+        'Create a card on a board. Goes in the first column unless column_id is given. Every id in assignee_ids must be a member of the board.',
       parameters: {
         type: 'object',
         properties: {
@@ -160,7 +160,7 @@ const TOOLS = [
           title: { type: 'string' },
           description: { type: 'string' },
           column_id: { type: 'integer' },
-          assignee_id: { type: 'integer' },
+          assignee_ids: { type: 'array', items: { type: 'integer' }, description: 'Board member ids to put on the card; replaces the current set.' },
           due_date: { type: 'string', description: 'ISO date, YYYY-MM-DD' },
           priority: { type: 'string', enum: ['low', 'medium', 'high'] },
         },
@@ -173,7 +173,7 @@ const TOOLS = [
     function: {
       name: 'update_board_task',
       description:
-        'Update a card on a board - including moving it to another column (column_id) or assigning it to someone (assignee_id). Destructive: requires user confirmation before it is applied.',
+        'Update a card on a board - including moving it to another column (column_id) or setting who is on it (assignee_ids, which REPLACES the current set). Destructive: requires user confirmation before it is applied.',
       parameters: {
         type: 'object',
         properties: {
@@ -182,7 +182,7 @@ const TOOLS = [
           title: { type: 'string' },
           description: { type: 'string' },
           column_id: { type: 'integer', description: 'Move the card to this column of the same board.' },
-          assignee_id: { type: 'integer' },
+          assignee_ids: { type: 'array', items: { type: 'integer' }, description: 'Board member ids to put on the card; replaces the current set.' },
           priority: { type: 'string', enum: ['low', 'medium', 'high'] },
           due_date: { type: 'string' },
         },

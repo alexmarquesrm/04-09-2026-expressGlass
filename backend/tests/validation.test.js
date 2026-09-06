@@ -76,15 +76,16 @@ test('validateTaskFields accepts a valid position', () => {
   assert.doesNotThrow(() => validateTaskFields({ position: 20 }, { requireTitle: false }));
 });
 
-test('validateTaskFields rejects a non-integer or non-positive assignee_id', () => {
-  assert.throws(() => validateTaskFields({ assignee_id: 'abc' }, { requireTitle: false }), /assignee_id must be a positive integer/);
-  assert.throws(() => validateTaskFields({ assignee_id: 0 }, { requireTitle: false }), /assignee_id must be a positive integer/);
-  assert.throws(() => validateTaskFields({ assignee_id: -1 }, { requireTitle: false }), /assignee_id must be a positive integer/);
+test('validateTaskFields rejects assignee_ids that are not an array of positive integers', () => {
+  assert.throws(() => validateTaskFields({ assignee_ids: 'abc' }, { requireTitle: false }), /assignee_ids must be an array/);
+  assert.throws(() => validateTaskFields({ assignee_ids: [0] }, { requireTitle: false }), /assignee_ids must be an array/);
+  assert.throws(() => validateTaskFields({ assignee_ids: [-1] }, { requireTitle: false }), /assignee_ids must be an array/);
+  assert.throws(() => validateTaskFields({ assignee_ids: [7, 7] }, { requireTitle: false }), /must not contain duplicates/);
 });
 
-test('validateTaskFields accepts a null or valid assignee_id', () => {
-  assert.doesNotThrow(() => validateTaskFields({ assignee_id: null }, { requireTitle: false }));
-  assert.doesNotThrow(() => validateTaskFields({ assignee_id: 7 }, { requireTitle: false }));
+test('validateTaskFields accepts an empty or valid assignee_ids array', () => {
+  assert.doesNotThrow(() => validateTaskFields({ assignee_ids: [] }, { requireTitle: false }));
+  assert.doesNotThrow(() => validateTaskFields({ assignee_ids: [7, 8] }, { requireTitle: false }));
 });
 
 test('validateChatMessage rejects empty or non-string messages', () => {

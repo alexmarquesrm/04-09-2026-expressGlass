@@ -15,10 +15,11 @@ const PRIORITY_LABELS = { low: 'Baixa', medium: 'Média', high: 'Alta' };
 export default function TaskModal({ task, columns, members, onSave, onDelete, onClose }) {
   const [title, setTitle] = useState(task.title);
   const [description, setDescription] = useState(task.description || '');
-  const [assigneeId, setAssigneeId] = useState(task.assignee_id || '');
+  const [assigneeIds, setAssigneeIds] = useState((task.assignees || []).map((a) => a.user_id));
   const [columnId, setColumnId] = useState(task.column_id);
   const [priority, setPriority] = useState(task.priority);
   const [labels, setLabels] = useState(task.labels || []);
+  const [pickerOpen, setPickerOpen] = useState(false);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -33,6 +34,10 @@ export default function TaskModal({ task, columns, members, onSave, onDelete, on
     setLabels((prev) => (prev.includes(key) ? prev.filter((l) => l !== key) : [...prev, key]));
   }
 
+  function toggleAssignee(userId) {
+    setAssigneeIds((prev) => (prev.includes(userId) ? prev.filter((id) => id !== userId) : [...prev, userId]));
+  }
+
   async function handleSave(e) {
     e.preventDefault();
     if (!title.trim() || saving) return;
@@ -41,7 +46,7 @@ export default function TaskModal({ task, columns, members, onSave, onDelete, on
       await onSave({
         title: title.trim(),
         description: description.trim() || null,
-        assignee_id: assigneeId ? Number(assigneeId) : null,
+        assignee_ids: assigneeIds,
         column_id: Number(columnId),
         priority,
         labels,
@@ -51,11 +56,20 @@ export default function TaskModal({ task, columns, members, onSave, onDelete, on
     }
   }
 
-  const assignee = members.find((m) => m.user_id === Number(assigneeId));
+  // Ordered by the board's member list so the chips don't jump around as people
+  // are added and removed.
+  const assigned = members.filter((m) => assigneeIds.includes(m.user_id));
 
   return (
     <div className="modal-overlay" role="dialog" aria-modal="true" aria-label="Detalhes do cartão" onClick={onClose}>
-      <form className="task-modal" onClick={(e) => e.stopPropagation()} onSubmit={handleSave}>
+      <form
+        className="task-modal"
+        onClick={(e) => {
+          e.stopPropagation();
+          setPickerOpen(false);
+        }}
+        onSubmit={handleSave}
+      >
         <div className="task-modal-header">
           <div style={{ display: 'flex', gap: 6 }}>
             {labels.map((key) => {
@@ -123,30 +137,72 @@ export default function TaskModal({ task, columns, members, onSave, onDelete, on
             </div>
           </div>
 
-          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-            <div style={{ flex: '1 1 150px' }}>
-              <label className="field-label" htmlFor="task-assignee">
-                Responsável
-              </label>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                {assignee && <Avatar name={assignee.name} size={26} />}
-                <select
-                  id="task-assignee"
-                  className="field-sm"
-                  style={{ flex: 1 }}
-                  value={assigneeId}
-                  onChange={(e) => setAssigneeId(e.target.value)}
-                >
-                  <option value="">Sem responsável</option>
-                  {members.map((m) => (
-                    <option key={m.user_id} value={m.user_id}>
-                      {m.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
+          <div>
+            <span className="field-label">Responsáveis</span>
+            {members.length === 0 ? (
+              <p style={{ margin: 0, fontSize: 13, color: 'var(--color-muted)' }}>Este quadro ainda não tem membros.</p>
+            ) : (
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', position: 'relative' }}>
+                {assigned.map((m) => (
+                  <span key={m.user_id} className="assignee-chip active">
+                    <Avatar name={m.name} size={22} />
+                    {m.name}
+                    <button
+                      type="button"
+                      aria-label={`Remover ${m.name} do cartão`}
+                      onClick={() => toggleAssignee(m.user_id)}
+                      style={{ border: 'none', background: 'transparent', color: 'inherit', cursor: 'pointer', padding: 0, fontSize: 12 }}
+                    >
+                      ✕
+                    </button>
+                  </span>
+                ))}
 
+                <button
+                  type="button"
+                  className="assignee-add"
+                  aria-label="Adicionar responsável"
+                  aria-expanded={pickerOpen}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setPickerOpen((open) => !open);
+                  }}
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round">
+                    <line x1="12" y1="5" x2="12" y2="19"></line>
+                    <line x1="5" y1="12" x2="19" y2="12"></line>
+                  </svg>
+                </button>
+
+                {pickerOpen && (
+                  <div className="assignee-picker" onClick={(e) => e.stopPropagation()}>
+                    {members.map((m) => {
+                      const active = assigneeIds.includes(m.user_id);
+                      return (
+                        <button
+                          key={m.user_id}
+                          type="button"
+                          aria-label={`Responsável ${m.name}`}
+                          aria-pressed={active}
+                          onClick={() => toggleAssignee(m.user_id)}
+                        >
+                          <Avatar name={m.name} size={22} />
+                          <span style={{ flex: 1, textAlign: 'left' }}>{m.name}</span>
+                          {active && (
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--color-accent)" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                              <polyline points="20 6 9 17 4 12"></polyline>
+                            </svg>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
             <div style={{ flex: '1 1 120px' }}>
               <label className="field-label" htmlFor="task-column">
                 Coluna

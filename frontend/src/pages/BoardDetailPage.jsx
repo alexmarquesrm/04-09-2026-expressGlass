@@ -92,7 +92,7 @@ export default function BoardDetailPage() {
       const task = await createBoardTask(id, {
         title: composerTitle.trim(),
         priority: composerPriority,
-        assignee_id: composerAssignee ? Number(composerAssignee) : null,
+        assignee_ids: composerAssignee ? [Number(composerAssignee)] : [],
         column_id: columnId,
       });
       setTasks((prev) => [...prev, task]);
@@ -514,9 +514,11 @@ export default function BoardDetailPage() {
                             {new Date(task.due_date).toLocaleDateString('pt-PT', { month: 'short', day: 'numeric' })}
                           </span>
                         )}
-                        {task.assignee_name && (
-                          <span style={{ marginLeft: 'auto' }}>
-                            <Avatar name={task.assignee_name} size={22} />
+                        {task.assignees && task.assignees.length > 0 && (
+                          <span className="avatar-stack" style={{ marginLeft: 'auto' }}>
+                            {task.assignees.map((a) => (
+                              <Avatar key={a.user_id} name={a.name} size={22} />
+                            ))}
                           </span>
                         )}
                       </span>

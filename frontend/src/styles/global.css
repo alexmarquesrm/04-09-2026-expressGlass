@@ -695,6 +695,93 @@ body {
   box-shadow: 0 0 0 2px var(--color-surface), 0 0 0 4px var(--color-text);
 }
 
+.assignee-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px 4px 4px;
+  border-radius: 999px;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-muted);
+  cursor: pointer;
+  transition: border-color 0.12s ease, color 0.12s ease, background 0.12s ease;
+}
+
+.assignee-chip:hover {
+  border-color: var(--color-accent);
+}
+
+.assignee-chip.active {
+  background: var(--color-accent-tint-bg);
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+
+/* Only people actually on the card get a chip; everyone else lives behind this,
+   so a board with many members doesn't turn the modal into a wall of names. */
+.assignee-add {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: 1px dashed var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-muted);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: border-color 0.12s ease, color 0.12s ease, background 0.12s ease;
+}
+
+.assignee-add:hover {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+  background: var(--color-accent-tint-bg);
+}
+
+.assignee-picker {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 5;
+  width: 240px;
+  max-height: 220px;
+  overflow-y: auto;
+  padding: 4px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  box-shadow: 0 12px 32px rgba(28, 25, 23, 0.18);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.assignee-picker button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 8px;
+  border: none;
+  background: transparent;
+  border-radius: 6px;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text);
+  cursor: pointer;
+}
+
+.assignee-picker button:hover {
+  background: var(--color-bg);
+}
+
 .task-modal {
   background: var(--color-surface);
   border-radius: var(--radius);
