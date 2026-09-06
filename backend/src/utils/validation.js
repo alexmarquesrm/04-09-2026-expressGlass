@@ -7,15 +7,15 @@ function badRequest(message) {
   return err;
 }
 
-function parseId(rawId) {
+function parseId(rawId, label = 'task') {
   const id = Number(rawId);
   if (!Number.isInteger(id) || id <= 0) {
-    throw badRequest(`invalid task id: "${rawId}"`);
+    throw badRequest(`invalid ${label} id: "${rawId}"`);
   }
   return id;
 }
 
-function validateTaskFields({ title, description, status, priority, due_date, tags }, { requireTitle }) {
+function validateTaskFields({ title, description, status, priority, due_date, tags, position }, { requireTitle }) {
   if (requireTitle && (typeof title !== 'string' || !title.trim())) {
     throw badRequest('title is required and must be a non-empty string');
   }
@@ -37,6 +37,9 @@ function validateTaskFields({ title, description, status, priority, due_date, ta
   if (tags !== undefined && (!Array.isArray(tags) || !tags.every((t) => typeof t === 'string'))) {
     throw badRequest('tags must be an array of strings');
   }
+  if (position !== undefined && (!Number.isInteger(position) || position < 0 || position > 1_000_000_000)) {
+    throw badRequest('position must be a non-negative integer no greater than 1000000000');
+  }
 }
 
 function validateChatMessage(message) {
@@ -55,4 +58,20 @@ function validateConfirmationToken(token) {
   return token;
 }
 
-module.exports = { parseId, validateTaskFields, validateChatMessage, validateConfirmationToken, badRequest };
+function validateBoardFields({ name }, { requireName }) {
+  if (requireName && (typeof name !== 'string' || !name.trim())) {
+    throw badRequest('name is required and must be a non-empty string');
+  }
+  if (name !== undefined && typeof name !== 'string') {
+    throw badRequest('name must be a string');
+  }
+}
+
+module.exports = {
+  parseId,
+  validateTaskFields,
+  validateChatMessage,
+  validateConfirmationToken,
+  validateBoardFields,
+  badRequest,
+};

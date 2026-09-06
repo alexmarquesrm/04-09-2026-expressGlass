@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert');
-const { parseId, validateTaskFields, validateChatMessage } = require('../src/utils/validation');
+const { parseId, validateTaskFields, validateChatMessage, validateBoardFields } = require('../src/utils/validation');
 
 test('parseId accepts positive integers', () => {
   assert.strictEqual(parseId('5'), 5);
@@ -13,6 +13,10 @@ test('parseId rejects non-numeric ids', () => {
 test('parseId rejects zero and negative ids', () => {
   assert.throws(() => parseId('0'));
   assert.throws(() => parseId('-3'));
+});
+
+test('parseId uses the given label in its error message', () => {
+  assert.throws(() => parseId('abc', 'board'), /invalid board id/);
 });
 
 test('validateTaskFields requires a non-empty string title on create', () => {
@@ -50,6 +54,20 @@ test('validateTaskFields does not require title when requireTitle is false and t
   assert.doesNotThrow(() => validateTaskFields({ status: 'completed' }, { requireTitle: false }));
 });
 
+test('validateTaskFields rejects a non-integer or negative position', () => {
+  assert.throws(() => validateTaskFields({ position: 'not-a-number' }, { requireTitle: false }), /position must be a non-negative integer/);
+  assert.throws(() => validateTaskFields({ position: -1 }, { requireTitle: false }), /position must be a non-negative integer/);
+  assert.throws(() => validateTaskFields({ position: 1.5 }, { requireTitle: false }), /position must be a non-negative integer/);
+});
+
+test('validateTaskFields rejects a position beyond the Postgres integer range', () => {
+  assert.throws(() => validateTaskFields({ position: 99999999999 }, { requireTitle: false }), /position must be a non-negative integer/);
+});
+
+test('validateTaskFields accepts a valid position', () => {
+  assert.doesNotThrow(() => validateTaskFields({ position: 20 }, { requireTitle: false }));
+});
+
 test('validateChatMessage rejects empty or non-string messages', () => {
   assert.throws(() => validateChatMessage(''), /message is required/);
   assert.throws(() => validateChatMessage('   '), /message is required/);
@@ -63,4 +81,14 @@ test('validateChatMessage rejects messages over 2000 characters', () => {
 
 test('validateChatMessage accepts a normal message', () => {
   assert.doesNotThrow(() => validateChatMessage('cria uma tarefa para amanha'));
+});
+
+test('validateBoardFields requires a non-empty string name on create', () => {
+  assert.throws(() => validateBoardFields({}, { requireName: true }), /name is required/);
+  assert.throws(() => validateBoardFields({ name: '   ' }, { requireName: true }), /name is required/);
+  assert.throws(() => validateBoardFields({ name: 123 }, { requireName: true }));
+});
+
+test('validateBoardFields does not require name when requireName is false', () => {
+  assert.doesNotThrow(() => validateBoardFields({}, { requireName: false }));
 });

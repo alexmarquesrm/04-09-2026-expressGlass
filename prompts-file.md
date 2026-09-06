@@ -326,3 +326,43 @@ This is the clearest demonstration in the whole project of why a review pass sco
 
 **AI mistake or oddity noticed?**
 Yes, and it's the same root mistake as Entry 13's near-miss, except this time it actually shipped: trusting that a fix verified against one narrow criterion ("is the computed date correct") was sufficient, without tracing every other place a change like `TZ=Europe/Lisbon` could reach. `TZ` is a genuinely global, cross-cutting setting - changing it can't be scoped to "just the chatbot's date logic" no matter how the code that reads it is scoped, and that should have been the first question asked when M5's fix was made, not something a later, separate review pass had to discover.
+
+---
+
+### Entry 15 — S1, multiple boards, the first stretch-tier item — 2026-09-06
+
+**Prompt (exact):**
+> the end of the file there the stretch tier, dont change whats dones, just create the stretch tier on new routes
+> All 5, in the plan's own order (Recommended)
+
+**Result obtained (summary):**
+Built S1 (multiple boards) as entirely new, additive files: migrations 004/005 (`boards`, `board_tasks` - the latter reusing the `task_status`/`task_priority` enums from 001 rather than duplicating them), `boards.service/controller/routes.js` and `boardTasks.service/controller.js`, a `validateBoardFields` export, and `/boards` + `/boards/:id` frontend pages with a two-column Pendente/Concluída view. The only touches to existing files were the minimum needed to make the feature reachable: one route-mount line in `server.js`, one nav link, and two new routes plus a conditional layout width in `App.jsx`. Verified with Playwright that the existing Tasks/Assistant pages render identically to before. Ran Security + Review-QA in parallel, same as every M0-M6 milestone. Both flagged the same two things independently: `position` (added for the not-yet-built S2) had zero validation - a live `PATCH` with a non-numeric value returned a raw 500 instead of a 400 - and the boards UI skipped the app's own established `ConfirmDialog` pattern for destructive actions, deleting a board (which cascades to every task on it) on a single click. Fixed both, plus two smaller QA-caught bugs (a stale error banner that never cleared on success, and a board-detail page stuck permanently on "A carregar..." if the board 404s) and two cheap suggestions (a `parseId` error message that said "task" even for a board id, and an `updateBoard` that bumped `updated_at` on a no-op PATCH).
+
+**Accepted / Corrected / Rejected:**
+All Warning-level findings from both reviews fixed. One Suggestion-level finding left as documented risk: board deletion's `ON DELETE CASCADE` has no audit-log entry, unlike single-task deletion's audit trail - explicitly deferred until S3 adds real ownership, since ownership is what should actually gate who can delete a board, not an audit log bolted onto an unauthenticated endpoint.
+
+**Why:**
+The user's instruction was unusually explicit about blast radius ("dont change whats dones, just create ... on new routes"), so the build was scoped file-by-file against that constraint rather than just "seems reasonable" - reusing existing enums instead of new ones, and treating every touch to a shared file as something to justify individually rather than default to editing freely.
+
+**AI mistake or oddity noticed?**
+Not a code mistake, but a verification one: my first attempt to Playwright-test the new pages against the frontend inside a throwaway Docker container failed because the browser (running inside the container's network) couldn't resolve `localhost:3001` to the real backend service, and a second attempt hit the CORS lock-down from M6 (the test browser's origin was the container's own hostname, not the real frontend origin M6 had restricted CORS to). Both were test-harness problems, not app bugs - solved by joining the test container to the compose network and routing/rewriting requests to the real service names, confirming CORS was still doing its job correctly along the way.
+
+---
+
+### Entry 16 — S2, drag-and-drop, and an off-by-one I caught before either review did — 2026-09-06
+
+**Prompt (exact):**
+> where are the rest of the features? logins, multiples users, assign users to tasks, board etc
+> (AskUserQuestion) "Keep original order (Recommended)" / "After stretch tier"
+
+**Result obtained (summary):**
+Built S2 (drag-and-drop) as a frontend-only change on top of S1's existing `position` column - no backend files touched. Used native HTML5 drag-and-drop (no new dependency): dropping a card reorders it within a column or moves it to the other column, recomputing `position` as `index * 10` for every task in the affected column(s) and persisting one `PATCH` per changed task. While writing my own Playwright verification script (dragging a card onto another to test reordering), the result came back wrong - `[A,B,C]` dragging A onto C produced `[B,C,A]` instead of the expected `[B,A,C]`. Traced it to an off-by-one: the drop target's index was computed against the full column list *including* the dragged card, but the destination list used to compute new positions had already excluded it, so inserting "before index 2" landed after the (now shorter) list's actual end. Fixed by adjusting the target index down by one whenever the dragged card's original position in that same column was before the target. Re-ran the same reorder, cross-column move, and reload-persistence checks - all correct afterward. Security and Review-QA (run in parallel, same discipline as S1) both independently flagged the same real fragility from a different angle: a failed `PATCH` mid-batch reverted the *entire* local task list to its pre-drag snapshot, discarding any already-successful writes' effects from the UI's perspective and leaving it out of sync with the actual DB until a reload.
+
+**Accepted / Corrected / Rejected:**
+Fixed the mid-batch-failure case (now re-fetches from the server on failure instead of blindly reverting to a stale snapshot) and a related stale-closure risk Review-QA flagged (rapid successive drags could read pre-first-drag state; switched to a ref instead of render-scoped state). Also fixed two Suggestion-level items: redundant `PATCH` calls firing even for a true no-op drag, and newly created board tasks always getting `position: 0` regardless of how many tasks were already in that column (now computed from the column's current max). Applied Security's suggested upper bound on `position` (matching Postgres's `INTEGER` column) even though it wasn't exploitable, since it was a one-line fix for a real (if minor) gap.
+
+**Why:**
+The off-by-one is a good example of why "verify by tracing the algorithm on paper" isn't a substitute for "verify by running it": the bug was in exactly the kind of index-arithmetic edge case that's easy to convince yourself is correct while writing it, and only showed up because the Playwright script asserted the *actual resulting order*, not just "did the request succeed."
+
+**AI mistake or oddity noticed?**
+Yes - the off-by-one itself. I wrote the insert-before-target logic and initially reasoned it was correct without tracing a concrete example by hand; the bug only surfaced because I insisted on checking the live DOM order after a real drag-and-drop, rather than trusting that "no errors were thrown" meant the feature worked. Caught and fixed before either subagent review ran, which meant both reviews were checking already-correct reordering logic and could focus on the failure-recovery gap instead.

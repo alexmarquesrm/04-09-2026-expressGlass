@@ -19,6 +19,9 @@ export default function NavBar() {
       <NavLink to="/assistant" style={linkStyle}>
         Assistente
       </NavLink>
+      <NavLink to="/boards" style={linkStyle}>
+        Quadros
+      </NavLink>
     </nav>
   );
 }
