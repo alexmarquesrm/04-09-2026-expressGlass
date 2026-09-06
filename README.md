@@ -39,6 +39,15 @@ That single command starts three containers:
 
 Only fill in `DEEPSEEK_API_KEY` in `.env` if you're working on the chatbot extension (M4) — the core task list doesn't need it. To stop everything: `docker compose down` (add `-v` to also wipe the database and get a fresh seeded state next time).
 
+The same startup migrations also seed 4 default user accounts (all sharing the password `password123`) spread across 3 boards with different roles, so `/boards` isn't empty either on a first run:
+
+| Email | Password | Boards |
+| --- | --- | --- |
+| `ana@expressglass.dev` | `password123` | owner of *Website ExpressGlass*, member of *Sprint de Marketing* |
+| `bruno@expressglass.dev` | `password123` | owner of *Sprint de Marketing*, member of *Website ExpressGlass* |
+| `carla@expressglass.dev` | `password123` | owner of *Backlog Pessoal*, member of *Website ExpressGlass* |
+| `diogo@expressglass.dev` | `password123` | member of *Sprint de Marketing* |
+
 ---
 
 Este único comando arranca três contentores:
@@ -48,3 +57,5 @@ Este único comando arranca três contentores:
 - **`frontend`** — a interface React (servidor de desenvolvimento Vite) em [http://localhost:5173](http://localhost:5173): [http://localhost:5173/](http://localhost:5173/) para a lista de tarefas (já em português), [http://localhost:5173/assistant](http://localhost:5173/assistant) para o assistente de conversa em linguagem natural (precisa de `DEEPSEEK_API_KEY` definida para responder de facto).
 
 Só é preciso preencher `DEEPSEEK_API_KEY` no `.env` se estiver a trabalhar na extensão de chatbot (M4) — o núcleo da aplicação não precisa disso. Para parar tudo: `docker compose down` (acrescentar `-v` também apaga a base de dados, ficando com um estado inicial semeado limpo na próxima vez).
+
+As mesmas migrações de arranque também semeiam 4 contas de utilizador (todas com a password `password123`) distribuídas por 3 quadros com papéis diferentes, para o `/boards` também não aparecer vazio na primeira execução — ver a tabela acima para a lista de logins.

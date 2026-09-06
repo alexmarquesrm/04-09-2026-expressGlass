@@ -27,7 +27,10 @@ export default function RegisterPage() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20, maxWidth: 360, margin: '0 auto' }}>
-      <div>
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, textAlign: 'center' }}>
+        <span className="app-brand-mark" style={{ width: 40, height: 40, borderRadius: 12, fontSize: 18 }}>
+          E
+        </span>
         <h1 style={{ margin: 0, fontSize: 26, fontWeight: 800, letterSpacing: '-0.01em' }}>Criar conta</h1>
       </div>
 

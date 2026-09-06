@@ -5,6 +5,8 @@ import { fetchMembers, addMember, removeMember } from '../api/boardMembers.js';
 import { fetchUsers } from '../api/users.js';
 import { useAuth } from '../context/AuthContext.jsx';
 import ConfirmDialog from '../components/ConfirmDialog.jsx';
+import Avatar from '../components/Avatar.jsx';
+import { gradientFor } from '../utils/color.js';
 
 const PRIORITY_LABELS = { low: 'Baixa', medium: 'Média', high: 'Alta' };
 const ROLE_LABELS = { owner: 'Dono', member: 'Membro' };
@@ -208,13 +210,17 @@ export default function BoardDetailPage() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-      <div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
         <Link to="/boards" style={{ fontSize: 13, color: 'var(--color-muted)', textDecoration: 'none' }}>
           ← Quadros
         </Link>
-        <h1 style={{ margin: '4px 0 0', fontSize: 26, fontWeight: 800, letterSpacing: '-0.01em' }}>
-          {board ? board.name : 'A carregar...'}
-        </h1>
+        {board ? (
+          <div className="board-hero" style={{ background: gradientFor(board.id) }}>
+            <h1 className="board-hero-title">{board.name}</h1>
+          </div>
+        ) : (
+          <h1 style={{ margin: '4px 0 0', fontSize: 26, fontWeight: 800, letterSpacing: '-0.01em' }}>A carregar...</h1>
+        )}
       </div>
 
       {error && (
@@ -233,8 +239,9 @@ export default function BoardDetailPage() {
               <span
                 key={m.user_id}
                 className="tag-pill"
-                style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 6, paddingLeft: 4 }}
               >
+                <Avatar name={m.name} size={18} />
                 {m.name} · {ROLE_LABELS[m.role] || m.role}
                 {isOwner && (
                   <button
@@ -304,8 +311,7 @@ export default function BoardDetailPage() {
           return (
             <div
               key={column.status}
-              className="card"
-              style={{ flex: '1 1 320px', minWidth: 280, padding: 16, display: 'flex', flexDirection: 'column', gap: 10 }}
+              className="board-column"
               onDragOver={(e) => e.preventDefault()}
               onDrop={(e) => {
                 e.preventDefault();
@@ -313,74 +319,91 @@ export default function BoardDetailPage() {
                 if (taskId) moveTaskTo(taskId, column.status, columnTasks.length);
               }}
             >
-              <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--color-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                {column.label} · {columnTasks.length}
-              </div>
-              {columnTasks.length === 0 && (
-                <div style={{ fontSize: 13, color: 'var(--color-muted)', padding: '12px 0' }}>Sem tarefas</div>
-              )}
-              {columnTasks.map((task, index) => (
-                <div
-                  key={task.id}
-                  draggable
-                  onDragStart={(e) => {
-                    e.dataTransfer.setData('text/plain', String(task.id));
-                    setDraggingId(task.id);
-                  }}
-                  onDragEnd={() => setDraggingId(null)}
-                  onDragOver={(e) => e.preventDefault()}
-                  onDrop={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    const taskId = Number(e.dataTransfer.getData('text/plain'));
-                    if (taskId) moveTaskTo(taskId, column.status, index);
-                  }}
+              <div className="board-column-header">
+                <span className={`status-dot ${column.status}`} />
+                <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--color-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  {column.label}
+                </span>
+                <span
                   style={{
-                    border: '1px solid var(--color-border)',
-                    borderRadius: 'var(--radius-sm)',
-                    padding: 12,
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: 6,
-                    cursor: 'grab',
-                    opacity: draggingId === task.id ? 0.4 : 1,
+                    marginLeft: 'auto',
+                    fontSize: 11,
+                    fontWeight: 700,
+                    color: 'var(--color-muted)',
+                    background: 'var(--color-bg)',
+                    borderRadius: 999,
+                    padding: '1px 8px',
                   }}
                 >
-                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
-                    <span style={{ fontSize: 14, fontWeight: 600 }}>{task.title}</span>
-                    <span className={`badge-priority ${task.priority}`}>{PRIORITY_LABELS[task.priority] || task.priority}</span>
-                  </div>
-                  <select
-                    className="field-sm"
-                    value={task.assignee_id || ''}
-                    onChange={(e) => handleReassign(task.id, e.target.value)}
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <option value="">Sem atribuição</option>
-                    {users.map((u) => (
-                      <option key={u.id} value={u.id}>
-                        {u.name}
-                      </option>
-                    ))}
-                  </select>
-                  <div style={{ display: 'flex', gap: 8 }}>
-                    <button
-                      type="button"
-                      className="btn-secondary"
-                      style={{ padding: '4px 10px', fontSize: 12 }}
-                      onClick={() => {
-                        const nextStatus = column.status === 'pending' ? 'completed' : 'pending';
-                        moveTaskTo(task.id, nextStatus, Infinity);
+                  {columnTasks.length}
+                </span>
+              </div>
+              <div className="board-column-body">
+                {columnTasks.length === 0 && (
+                  <div style={{ fontSize: 13, color: 'var(--color-muted)', padding: '12px 0' }}>Sem tarefas</div>
+                )}
+                {columnTasks.map((task, index) => {
+                  const assignee = users.find((u) => u.id === task.assignee_id);
+                  return (
+                    <div
+                      key={task.id}
+                      className="task-card"
+                      draggable
+                      onDragStart={(e) => {
+                        e.dataTransfer.setData('text/plain', String(task.id));
+                        setDraggingId(task.id);
                       }}
+                      onDragEnd={() => setDraggingId(null)}
+                      onDragOver={(e) => e.preventDefault()}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        const taskId = Number(e.dataTransfer.getData('text/plain'));
+                        if (taskId) moveTaskTo(taskId, column.status, index);
+                      }}
+                      style={{ opacity: draggingId === task.id ? 0.4 : 1 }}
                     >
-                      Mover para {column.status === 'pending' ? 'Concluída' : 'Pendente'}
-                    </button>
-                    <button type="button" className="icon-btn danger" aria-label="Eliminar tarefa" onClick={() => setPendingDelete(task)}>
-                      ✕
-                    </button>
-                  </div>
-                </div>
-              ))}
+                      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+                        <span style={{ fontSize: 14, fontWeight: 600 }}>{task.title}</span>
+                        <span className={`badge-priority ${task.priority}`}>{PRIORITY_LABELS[task.priority] || task.priority}</span>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        {assignee && <Avatar name={assignee.name} size={22} />}
+                        <select
+                          className="field-sm"
+                          style={{ flex: 1 }}
+                          value={task.assignee_id || ''}
+                          onChange={(e) => handleReassign(task.id, e.target.value)}
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <option value="">Sem atribuição</option>
+                          {users.map((u) => (
+                            <option key={u.id} value={u.id}>
+                              {u.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        <button
+                          type="button"
+                          className="btn-secondary"
+                          style={{ padding: '4px 10px', fontSize: 12 }}
+                          onClick={() => {
+                            const nextStatus = column.status === 'pending' ? 'completed' : 'pending';
+                            moveTaskTo(task.id, nextStatus, Infinity);
+                          }}
+                        >
+                          Mover para {column.status === 'pending' ? 'Concluída' : 'Pendente'}
+                        </button>
+                        <button type="button" className="icon-btn danger" aria-label="Eliminar tarefa" onClick={() => setPendingDelete(task)}>
+                          ✕
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           );
         })}
