@@ -1,5 +1,9 @@
 # RELATÓRIO — ExpressGlass Take-Home Challenge
 
+## Sobre este relatório
+
+O enunciado pedia uma aplicação simples: uma API para criar e listar tarefas, ligada a uma base de dados local, e uma interface web para as usar — foi isso que entreguei primeiro, com Node/Express + PostgreSQL + React. Depois de entregue esse núcleo, o projeto continuou a crescer a pedido, passo a passo, até se tornar um gestor de tarefas em quadros com contas de utilizador e um assistente de chat. As secções seguintes descrevem o processo (ferramentas, prompts, o que foi aceite/corrigido, um erro da IA) tal como o enunciado pede; a última secção resume, de forma simples, o que foi acrescentado depois do núcleo e para que serve cada coisa.
+
 ## Ferramentas e modelos de IA usados
 
 - **Claude Code** — agente principal de desenvolvimento, do início ao fim do projeto: scaffolding, backend, frontend, testes, depuração e orquestração dos subagentes abaixo. O modelo por trás mudou ao longo do projeto: começou em Sonnet 5, passou a Opus 5 durante a maior parte da construção do nível "stretch" (quadros, autenticação, permissões, assistente), e voltou a Sonnet 5 no acabamento final.
@@ -30,6 +34,22 @@ Resultado: o assistente de chat passou de um separador próprio para um botão f
 O mais valioso não foi encontrado por um teste, mas por uma conversa real com o próprio utilizador. Ao pedir ao assistente "tarefas pendentes nos quadros", a resposta falhava sempre com um erro genérico. O registo do backend mostrava a causa real: quando o fornecedor de IA devolvia várias chamadas de ferramenta na mesma resposta (uma por cada quadro do utilizador), o código só respondia à primeira, o que tornava o pedido seguinte inválido e derrubava toda a conversa.
 
 Isto escondeu-se bem porque o código foi escrito numa altura em que o assistente só tinha ferramentas de alvo único, onde esse cenário praticamente nunca acontece — só passou a ocorrer quando os quadros deram ao modelo um motivo real para pedir várias coisas de uma vez. Todos os testes escritos até aí chamavam a função das ferramentas diretamente, nunca passando por uma resposta real do fornecedor — por isso nenhum deles podia ter apanhado este bug. A correção veio junto com o teste que devia ter existido desde o início: um cliente de IA substituível por um falso nos testes, devolvendo duas chamadas de ferramenta de propósito, confirmando que ambas recebem resposta. A lição: quando o código conversa com um protocolo externo, os testes têm de simular as formas desse protocolo (respostas em lote, respostas vazias, erros), e não só o lado da função que se controla.
+
+## O que o projeto ganhou depois do exercício base
+
+O núcleo pedido no enunciado é a lista de tarefas simples (`/`). Tudo o resto abaixo foi construído depois, a pedido, e resume-se aqui em poucas linhas — o "como" e o "porquê" de cada peça:
+
+- **Quadros (`/boards`)** — em vez de uma única lista, as tarefas passaram a viver em quadros ao estilo Trello, um por projeto ou equipa.
+- **Colunas personalizáveis** — cada quadro tem as suas próprias colunas (por exemplo "A fazer", "Em progresso", "Feito"), que o utilizador cria, renomeia e apaga.
+- **Arrastar e largar** — os cartões movem-se entre colunas por drag-and-drop.
+- **Contas de utilizador** — registo e login com sessão guardada em cookie, para cada pessoa ter o seu próprio acesso.
+- **Permissões por quadro** — cada quadro tem um dono e membros; só o dono convida ou remove pessoas, e só quem pertence ao quadro o vê ou edita.
+- **Atribuição de tarefas** — um cartão pode ser atribuído a uma ou várias pessoas do quadro.
+- **Detalhe do cartão** — clicar num cartão abre um modal para editar título, descrição, coluna, prioridade e etiquetas de cor.
+- **Assistente de chat** — um botão flutuante disponível em qualquer página que entende pedidos em português normal ("cria uma tarefa para amanhã", "que tarefas tenho no quadro X") e executa a ação a sério na base de dados, sempre pedindo confirmação antes de qualquer ação que mude ou apague algo importante.
+- **Testes automáticos e integração contínua** — 99 testes no backend e 31 no frontend, corridos automaticamente a cada alteração via GitHub Actions, para apanhar regressões sem depender de testar tudo à mão.
+
+Cada uma destas peças está documentada com mais detalhe (incluindo os bugs encontrados pelo caminho) em [PROJECT-PLAN.md](PROJECT-PLAN.md) e [prompts-file.md](prompts-file.md).
 
 ---
 

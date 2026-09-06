@@ -59,3 +59,25 @@ Este único comando arranca três contentores:
 Só é preciso preencher `DEEPSEEK_API_KEY` no `.env` se estiver a trabalhar na extensão de chatbot (M4) — o núcleo da aplicação não precisa disso. Para parar tudo: `docker compose down` (acrescentar `-v` também apaga a base de dados, ficando com um estado inicial semeado limpo na próxima vez).
 
 As mesmas migrações de arranque também semeiam 4 contas de utilizador (todas com a password `password123`) distribuídas por 3 quadros com papéis diferentes, para o `/boards` também não aparecer vazio na primeira execução — ver a tabela acima para a lista de logins.
+
+---
+
+## Tests / Testes
+
+With the stack already running via `docker compose up`:
+
+```
+docker compose exec backend npm test    # 99 tests (node --test)
+docker compose exec frontend npm test   # 31 tests (Vitest + React Testing Library)
+```
+
+Both suites also run automatically on every push and pull request via `.github/workflows/ci.yml` (backend against a real Postgres service container, frontend standalone).
+
+Com a stack já a correr via `docker compose up`:
+
+```
+docker compose exec backend npm test    # 99 testes (node --test)
+docker compose exec frontend npm test   # 31 testes (Vitest + React Testing Library)
+```
+
+As duas suites também correm automaticamente em cada push e pull request via `.github/workflows/ci.yml` (o backend contra um contentor real de Postgres, o frontend sozinho).
