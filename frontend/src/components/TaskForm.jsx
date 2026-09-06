@@ -12,7 +12,7 @@ export default function TaskForm({ onCreate }) {
     if (!title.trim()) return;
     setSubmitting(true);
     try {
-      await onCreate({ title, description: description.trim() || undefined, priority, due_date: dueDate || undefined });
+      await onCreate({ title: title.trim(), description: description.trim() || undefined, priority, due_date: dueDate || undefined });
       setTitle('');
       setDescription('');
       setPriority('medium');
