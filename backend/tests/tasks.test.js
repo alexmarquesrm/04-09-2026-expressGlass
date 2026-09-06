@@ -50,6 +50,21 @@ test('updateTask ignores fields not in the allow-list (no mass assignment)', asy
   await tasksService.deleteTask(created.id);
 });
 
+test('DATE columns come back as plain YYYY-MM-DD strings, not shifted by server timezone', async () => {
+  const { rows } = await pool.query("SELECT '2026-10-01'::date AS d");
+  assert.strictEqual(rows[0].d, '2026-10-01');
+});
+
+test('due_date round-trips through create/get without shifting a day', async () => {
+  const created = await tasksService.createTask({ title: 'Due date round-trip test', due_date: '2026-10-01' });
+  assert.strictEqual(created.due_date, '2026-10-01');
+
+  const fetched = await tasksService.getTask(created.id);
+  assert.strictEqual(fetched.due_date, '2026-10-01');
+
+  await tasksService.deleteTask(created.id);
+});
+
 test.after(async () => {
   await pool.end();
 });

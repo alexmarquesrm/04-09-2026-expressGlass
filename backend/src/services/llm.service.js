@@ -120,7 +120,7 @@ async function callDeepSeek(client, params) {
   try {
     return await client.chat.completions.create(params);
   } catch (err) {
-    console.error('DeepSeek API call failed:', err);
+    console.error('DeepSeek API call failed:', err.status, err.message);
     if (err.status === 429) {
       const wrapped = new Error(
         'O assistente atingiu o limite de pedidos a API do DeepSeek por agora. Tenta novamente mais tarde.'

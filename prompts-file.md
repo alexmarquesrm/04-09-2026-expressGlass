@@ -306,3 +306,23 @@ Accepted. Deliberately scoped down from a broader reading of "NL due dates": did
 
 **AI mistake or oddity noticed?**
 A near-miss rather than a shipped mistake: almost used `toISOString()` for "today" without noticing it's UTC-based, which is a common enough JavaScript date pitfall that it was worth pausing on deliberately rather than trusting the first version that ran without erroring — this bug doesn't throw, it just silently computes a plausible-looking wrong answer some of the time, which is worse than a crash for something feeding into an LLM's date arithmetic.
+
+---
+
+### Entry 14 — M6 holistic review catches a live regression the per-feature passes missed — 2026-09-06
+
+**Prompt (exact):**
+> lets check M6 then
+> what does M stand for?
+
+**Result obtained (summary):**
+Started the final milestone (M6 - Polish): a README pass, `RELATORIO.md` expansion, and - the important part - a Security + Review-QA subagent pass over the *whole* app together, explicitly asked to look holistically rather than per-feature the way every prior review this project had been. That framing paid off immediately: Review-QA found a critical, currently-live bug that none of the individual M4/M5 reviews had caught - every `due_date` in the entire app (plain REST API, frontend display, chatbot replies) was coming back one calendar day early, live, in production right now, because Portugal is in DST. Root cause: M5's own fix (setting `TZ=Europe/Lisbon` so the chatbot's "what day is today" grounding would be correct) had a side effect nobody checked - `pg` builds a JS `Date` object from a `DATE` column at local midnight, and Express's `res.json()` then serializes that via `.toISOString()` (always UTC), so any non-zero local offset silently shifts the date back a day. It only "looked fine" outside the DST window, which is exactly why the M5 review - which verified the *computation* of today's date was correct, but explicitly didn't re-verify the chatbot's live output to conserve API spend - never saw it. Security's holistic pass separately caught that `cors()` was configured with no options at all (allow-any-origin) with no auth anywhere and no rate limit on the paid `/api/chat` endpoint - individually each of those was a known, accepted risk, but nobody had looked at the three of them stacked together before. Fixed both: `backend/src/db/pool.js` now overrides `pg`'s type parser for `DATE` columns to return the raw string instead of ever building a `Date` object (the actual root fix, not reverting `TZ`, which is still needed), with two new regression tests that assert the fix directly rather than depending on which season the test suite happens to run in; CORS now restricted to the real frontend origin.
+
+**Accepted / Corrected / Rejected:**
+Both findings accepted and fixed. A handful of smaller Security findings (task content flowing back into the chatbot's own context as a theoretical prompt-injection surface, loose `due_date` input validation, a benign double-confirm race) were accepted as documented, proportionate risk for a no-auth take-home rather than fixed, matching how every prior review pass in this project weighed severity against project scope.
+
+**Why:**
+This is the clearest demonstration in the whole project of why a review pass scoped to "the feature I just built" isn't the same as a review pass scoped to "the whole system as it now stands" - the due_date bug was invisible to M5's own review because M5's review was, reasonably, scoped to M5's own change in isolation (and further limited by an explicit API-cost budget). Only once asked to look across the entire app at once, cold, without the context of "I just wrote this and it looked right," did the interaction between two independently-reasonable decisions (add `TZ` for the chatbot; let `pg`/Express handle date serialization by default) surface as a real bug. The general lesson: a final, holistic review pass earns its place in the schedule even when every individual milestone was already reviewed - some bugs only exist in the gaps between features, not inside any one of them.
+
+**AI mistake or oddity noticed?**
+Yes, and it's the same root mistake as Entry 13's near-miss, except this time it actually shipped: trusting that a fix verified against one narrow criterion ("is the computed date correct") was sufficient, without tracing every other place a change like `TZ=Europe/Lisbon` could reach. `TZ` is a genuinely global, cross-cutting setting - changing it can't be scoped to "just the chatbot's date logic" no matter how the code that reads it is scoped, and that should have been the first question asked when M5's fix was made, not something a later, separate review pass had to discover.

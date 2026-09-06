@@ -52,7 +52,8 @@ Reflects what actually exists as of M2 close-out; `(planned)` marks files that d
 │   │       └── errorHandler.js
 │   └── tests/
 │       ├── tasks.test.js
-│       └── validation.test.js
+│       ├── validation.test.js
+│       └── audit.service.test.js
 └── frontend/
     ├── Dockerfile
     ├── .dockerignore
@@ -109,13 +110,14 @@ INSERT INTO tasks (title, status, priority, due_date, tags) VALUES
 
 -- 003_create_audit_log.sql
 CREATE TABLE audit_log (
-  id          SERIAL PRIMARY KEY,
-  source      TEXT NOT NULL DEFAULT 'chat',
-  message     TEXT NOT NULL,
-  tool_called TEXT,
-  tool_args   JSONB,
-  result      JSONB,
-  created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+  id                 SERIAL PRIMARY KEY,
+  source             TEXT NOT NULL DEFAULT 'chat',
+  message            TEXT NOT NULL,
+  tool_called        TEXT,
+  tool_args          JSONB,
+  result             JSONB,
+  confirmation_token TEXT UNIQUE,
+  created_at         TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 ```
 
@@ -150,9 +152,9 @@ Decision: the brief calls edit/delete optional, but both are fully built — API
 
 ## 4. Docker
 
-**docker-compose.yml** — three services: `db` (postgres:16-alpine, named volume, health check), `backend` (build `./backend`, depends on `db` healthy, reads `DATABASE_URL`/`ANTHROPIC_API_KEY` from `.env`), `frontend` (build `./frontend`, dev server, depends on `backend`). One `docker compose up` brings up the whole stack — no local Postgres install needed.
+**docker-compose.yml** — three services: `db` (postgres:16-alpine, named volume, health check), `backend` (build `./backend`, depends on `db` healthy, reads `DATABASE_URL`/`DEEPSEEK_API_KEY`/`TZ` from `.env`/compose), `frontend` (build `./frontend`, dev server, depends on `backend`). One `docker compose up` brings up the whole stack — no local Postgres install needed.
 
-**backend/Dockerfile** — Node LTS image, install deps, run migrations on start, `npm start`.
+**backend/Dockerfile** — Node LTS (Alpine) image, installs `tzdata` (needed for `TZ` to actually take effect — Alpine's Node image ships without timezone data by default), installs deps, runs migrations on start, `npm start`.
 
 **frontend/Dockerfile** — Node LTS image running the Vite dev server directly (decided against a static nginx build — this is a local take-home demo, not a production deploy, so the dev server's simplicity and HMR win).
 
@@ -160,13 +162,14 @@ Decision: the brief calls edit/delete optional, but both are fully built — API
 ```
 DATABASE_URL=postgres://postgres:postgres@db:5432/expressglass
 PORT=3001
-ANTHROPIC_API_KEY=
+DEEPSEEK_API_KEY=
 NODE_ENV=development
 ```
 
 **Known gotchas hit and fixed (worth knowing before touching `vite.config.js`):**
 - **Cross-container access needs `server.allowedHosts`.** Vite's dev server rejects any request whose `Host` header isn't `localhost`/the configured host (DNS-rebinding protection) — this silently 403'd requests from other containers on the compose network (e.g. a Playwright-based screenshot check hitting `frontend:5173`). Fixed with `allowedHosts: ['localhost', 'frontend']`.
 - **HMR can miss file changes on a Windows bind mount.** Native filesystem change events don't reliably cross the Windows-host → Docker bind-mount boundary, so chokidar's default watcher silently missed edits, serving stale JS. Fixed with `server.watch: { usePolling: true, interval: 300 }`. If frontend edits ever stop showing up live again, this is the first thing to check.
+- **Setting `TZ` on the backend shifted every `due_date` by a day while DST is active.** `TZ=Europe/Lisbon` was added so the chatbot's "what day is today" grounding (`buildSystemPrompt()`) is correct, but `pg` parses a `DATE` column into a JS `Date` at local midnight, and `res.json()` then serializes it via `.toISOString()` (UTC) — so any non-zero local offset (i.e. whenever Lisbon is in DST) pushed every due date back one calendar day. Fixed at the root in `backend/src/db/pool.js`: `types.setTypeParser(types.builtins.DATE, (v) => v)` returns the raw `'YYYY-MM-DD'` string instead of ever constructing a `Date` object, since a date-only column has no timezone to begin with. Covered by two tests in `backend/tests/tasks.test.js` that don't depend on which season they happen to run in.
 
 ---
 
@@ -239,7 +242,7 @@ One commit per completed-and-reviewed milestone (see Build order below), not one
 4. **M3 — Report discipline check ✅:** `prompts-file.md` confirmed up to date (3 entries); `RELATORIO.md` drafted (bilingual EN/PT, matching `README.md`'s convention), distilling the 3 strongest prompt-log entries plus the required tools/models, accepted-vs-corrected breakdown, and the enum-cast SQL bug as the "AI mistake caught" example.
 5. **M4 — Chatbot extension ✅ implemented + reviewed + live-verified:** `POST /api/chat` + `POST /api/chat/confirm`, tool definitions (`list_tasks`/`create_task`/`update_task`/`delete_task`) in `llm.service.js`, `audit.service.js`, migration `003_create_audit_log.sql`. Confirmation-before-destructive-action and the audit trail (M5 items 1-2) landed as part of this milestone rather than separately, since the chat feature needed them to be safe at all. `AssistantPage.jsx` rebuilt as a real chat UI (message bubbles, confirm/cancel buttons on pending destructive actions) replacing the M2 placeholder. Went through a Security + Review-QA subagent pass; fixes made as a result: destructive confirmations now use a random `confirmation_token` (not a guessable sequential id), the confirmation prompt discloses the actual field-by-field diff being proposed, tool arguments are validated the same way the REST API validates them before touching Postgres, upstream LLM API failures are wrapped instead of relaying raw error text, `errorHandler` no longer logs routine 4xx noise, and `/api/chat/confirm` gives an honest "nothing happened" reply instead of a false success when the target task no longer exists. Accepted without fixing, given the take-home's no-auth scope: `/api/chat` has no rate limiting. Built against Claude first, switched to the Gemini API (`@google/genai`) to test it live end-to-end with a real key, then switched again to the DeepSeek API (`openai` SDK against `https://api.deepseek.com`, model `deepseek-v4-flash`) at the user's request — see the note in section 3 and `prompts-file.md` Entries 9-11 for what each switch broke and fixed (Gemini: a stale model id, and the multi-hop tool-call/self-confirmation issues in section 3; DeepSeek: same multi-hop behavior confirmed again, this time verified with only one real paid API call plus the free confirm-path check, per an explicit "don't waste money" constraint). The Gemini pass was verified live end-to-end via curl and headless Playwright (create, list, update-with-confirm, delete-with-confirm, cancel); the DeepSeek pass relied on one probe call confirming the exact response shape plus code review, since further live calls would have cost real money. Live use of the chatbot also surfaced a pre-existing, chatbot-unrelated gap: `description` has been a real column on `tasks` and round-tripped through the API since M1, but no frontend surface (`TaskForm.jsx`, `TaskList.jsx`, the inline edit row) ever exposed it — the chatbot was simply the first thing to ever populate it with real content. Fixed by adding it to all three (`prompts-file.md` Entry 12).
 6. **M5 — Feature roadmap ✅:** tags/priority (done in M2), confirmation-before-destructive-action + audit trail (done in M4). Last item, NL due dates: the chatbot was already resolving relative dates ("amanhã") correctly by luck — the system prompt never told it what day "today" actually was, so it was just guessing from its own training-time sense of "now," which isn't something to trust for a real feature. Fixed by computing the real current date server-side each request and grounding the system prompt with it explicitly (`buildSystemPrompt()` in `llm.service.js`, replacing the old static `SYSTEM_PROMPT` string) — the model still does the actual relative-date arithmetic ("amanhã" -> tomorrow's date), but now from a stated, correct anchor instead of an assumption. Caught and fixed a real latent bug along the way: computing "today" via `toISOString()` uses UTC, which is wrong once the server's UTC day and the user's local calendar day disagree (i.e. every evening/night in a timezone ahead of UTC); switched to reading `Date`'s local year/month/day instead, and set `TZ=Europe/Lisbon` on the backend service (plus `apk add tzdata` in `backend/Dockerfile`, since Alpine's Node image ships without timezone data by default) so "local" inside the container actually matches the user's real-world "today." Verified for free: the computed date/weekday inside the container now matches the user's actual local clock; the live chatbot behavior with this new grounding was not re-verified against the real DeepSeek API, per the same "don't spend API calls without asking" constraint from M4's DeepSeek switch.
-7. **M6 — Polish:** final README pass, Security/Review-QA agent pass, finish `RELATORIO.md`.
+7. **M6 — Polish ✅:** final README pass (fixed the stale "chatbot placeholder" wording on `/assistant`, now a real feature), a holistic Security + Review-QA subagent pass across the *whole* app together (not per-feature this time), and `RELATORIO.md` expanded with the chatbot/provider-switching story and its two best "AI mistake" examples. The holistic pass earned its keep: Review-QA caught a **critical, currently-live regression** from M5's `TZ` change — every `due_date` was coming back one calendar day early during Portugal's DST window (confirmed live: the seeded `2026-09-08` task returned `2026-09-08` in September, when DST is active), because `pg` was building a JS `Date` at local midnight from the `DATE` column and `res.json()` serialized it back to UTC. Fixed at the root (`backend/src/db/pool.js`, see section 4's gotcha list), not by reverting `TZ` (still needed for the chatbot's date grounding); added two regression tests that don't depend on the season they run in. Security's holistic pass separately caught that CORS was fully open (`cors()` with no options) combined with no auth and no rate limit on `/api/chat` — any local browser tab could have triggered paid DeepSeek calls; fixed by restricting to the actual frontend origin (`http://localhost:5173`). Also tightened: DeepSeek API errors are no longer logged as a raw object (status/message only). Smaller findings accepted as documented risk given the take-home's scope: a theoretical prompt-injection surface where chatbot-visible task content could influence which tool it calls next (destructive actions stay gated regardless), a loose `due_date` input format, and a benign TOCTOU race if the same confirmation token were confirmed twice concurrently.
 
 Core (M0-M2) is the non-negotiable deliverable; everything after M2 is additive and gets cut first if time is short. Commit after each milestone per section 8.
 
