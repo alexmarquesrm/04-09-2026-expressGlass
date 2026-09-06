@@ -202,6 +202,81 @@ test('a pending confirmation with no recorded user is not confirmable by anyone'
   await boardTasksService.deleteBoardTask(board.id, task.id);
 });
 
+test('a response with several tool calls answers every one of them', async () => {
+  // The provider batches calls (one per board, say). Replying to only the first
+  // makes the next request malformed and the API rejects the whole turn with
+  // "An assistant message with 'tool_calls' must be followed by tool messages
+  // responding to each 'tool_call_id'" - which is exactly what happened live.
+  const requests = [];
+  const responses = [
+    {
+      choices: [
+        {
+          message: {
+            role: 'assistant',
+            content: null,
+            tool_calls: [
+              { id: 'call_1', type: 'function', function: { name: 'list_boards', arguments: '{}' } },
+              { id: 'call_2', type: 'function', function: { name: 'list_my_board_tasks', arguments: '{}' } },
+            ],
+          },
+        },
+      ],
+    },
+    { choices: [{ message: { role: 'assistant', content: 'Aqui está.' } }] },
+  ];
+  const client = {
+    chat: {
+      completions: {
+        create: async (params) => {
+          requests.push(params.messages);
+          return responses.shift();
+        },
+      },
+    },
+  };
+
+  const result = await llmService.handleMessage('tarefas pendentes nos quadros', owner, client);
+  assert.strictEqual(result.reply, 'Aqui está.');
+  assert.strictEqual(result.actions_taken.length, 2, 'both tool calls should run');
+
+  const secondRequest = requests[1];
+  const toolMessages = secondRequest.filter((m) => m.role === 'tool');
+  assert.deepStrictEqual(
+    toolMessages.map((m) => m.tool_call_id).sort(),
+    ['call_1', 'call_2'],
+    'every tool_call_id must be answered'
+  );
+});
+
+test('list_my_board_tasks returns only cards assigned to the caller, across boards, with board and column names', async () => {
+  const second = await boardsService.createBoard({ name: 'Agent second board' }, owner.id);
+  await boardMembersService.addMember(board.id, stranger.id, 'member');
+
+  const mineHere = await boardTasksService.createBoardTask(board.id, { title: 'Meu cartao A', assignee_id: owner.id });
+  const mineThere = await boardTasksService.createBoardTask(second.id, { title: 'Meu cartao B', assignee_id: owner.id });
+  await boardTasksService.createBoardTask(board.id, { title: 'Do outro', assignee_id: stranger.id });
+  await boardTasksService.createBoardTask(board.id, { title: 'De ninguem' });
+
+  const mine = await agentTools.executeTool('list_my_board_tasks', {}, owner);
+  const titles = mine.map((t) => t.title).sort();
+  assert.deepStrictEqual(titles, ['Meu cartao A', 'Meu cartao B']);
+  assert.ok(mine.every((t) => t.board_name && t.column_name), 'each card names its board and column');
+
+  const theirs = await agentTools.executeTool('list_my_board_tasks', {}, stranger);
+  assert.deepStrictEqual(theirs.map((t) => t.title), ['Do outro']);
+
+  // losing access to a board hides its cards, even though the assignment remains
+  await boardMembersService.removeMember(board.id, stranger.id);
+  assert.deepStrictEqual(await agentTools.executeTool('list_my_board_tasks', {}, stranger), []);
+
+  await boardTasksService.deleteBoardTask(board.id, mineHere.id);
+  await boardTasksService.deleteBoardTask(second.id, mineThere.id);
+  await boardsService.deleteBoard(second.id);
+  const leftovers = await boardTasksService.listBoardTasks(board.id);
+  for (const t of leftovers) await boardTasksService.deleteBoardTask(board.id, t.id);
+});
+
 test.after(async () => {
   await boardsService.deleteBoard(board.id);
   await pool.query("DELETE FROM audit_log WHERE message IN ('apaga o cartão', 'apaga')");

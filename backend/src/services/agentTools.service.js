@@ -141,6 +141,15 @@ const TOOLS = [
   {
     type: 'function',
     function: {
+      name: 'list_my_board_tasks',
+      description:
+        "Every card assigned to the current user, across all their boards, with board_name and column_name. Use this for questions like \"what am I working on\" or \"my tasks on the boards\" - it answers in one call instead of listing each board separately.",
+      parameters: { type: 'object', properties: {} },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'create_board_task',
       description:
         'Create a card on a board. Goes in the first column unless column_id is given. assignee_id must be a member of the board.',
@@ -282,6 +291,10 @@ async function executeTool(name, args, user) {
       await assertBoardAccess(user.id, boardId);
       return boardTasksService.listBoardTasks(boardId);
     }
+    case 'list_my_board_tasks':
+      // Already scoped to this user by the query itself, so no board gate here.
+      return boardTasksService.listTasksAssignedTo(user.id);
+
     case 'create_board_task': {
       const { board_id, ...fields } = args;
       const boardId = parseId(board_id, 'board');

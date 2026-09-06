@@ -82,6 +82,24 @@ async function createBoardTask(boardId, { title, description, due_date, priority
   }
 }
 
+// Every card assigned to one person, across all the boards they belong to.
+// The board_members join matters: being removed from a board must stop its
+// cards showing up here, even if the assignment row was left behind.
+async function listTasksAssignedTo(userId) {
+  const { rows } = await pool.query(
+    `SELECT bt.*, b.name AS board_name, bc.name AS column_name, u.name AS assignee_name
+     FROM board_tasks bt
+     JOIN boards b ON b.id = bt.board_id
+     JOIN board_columns bc ON bc.id = bt.column_id
+     JOIN board_members bm ON bm.board_id = bt.board_id AND bm.user_id = $1
+     LEFT JOIN users u ON u.id = bt.assignee_id
+     WHERE bt.assignee_id = $1
+     ORDER BY b.name, bc.position, bt.position`,
+    [userId]
+  );
+  return rows;
+}
+
 async function getBoardTask(boardId, id) {
   const { rows } = await pool.query(`${SELECT_WITH_ASSIGNEE} WHERE bt.id = $1 AND bt.board_id = $2`, [id, boardId]);
   return rows[0] || null;
@@ -139,4 +157,4 @@ async function deleteBoardTask(boardId, id) {
   return rowCount > 0;
 }
 
-module.exports = { listBoardTasks, createBoardTask, getBoardTask, updateBoardTask, deleteBoardTask };
+module.exports = { listBoardTasks, listTasksAssignedTo, createBoardTask, getBoardTask, updateBoardTask, deleteBoardTask };
