@@ -26,6 +26,7 @@ services:
       DATABASE_URL: postgres://postgres:postgres@db:5432/expressglass
       PORT: 3001
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      JWT_SECRET: ${JWT_SECRET}
       NODE_ENV: development
       TZ: Europe/Lisbon
     ports:

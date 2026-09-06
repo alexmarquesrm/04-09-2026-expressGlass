@@ -1,6 +1,13 @@
 const test = require('node:test');
 const assert = require('node:assert');
-const { parseId, validateTaskFields, validateChatMessage, validateBoardFields } = require('../src/utils/validation');
+const {
+  parseId,
+  validateTaskFields,
+  validateChatMessage,
+  validateBoardFields,
+  validateRegisterFields,
+  validateLoginFields,
+} = require('../src/utils/validation');
 
 test('parseId accepts positive integers', () => {
   assert.strictEqual(parseId('5'), 5);
@@ -91,4 +98,26 @@ test('validateBoardFields requires a non-empty string name on create', () => {
 
 test('validateBoardFields does not require name when requireName is false', () => {
   assert.doesNotThrow(() => validateBoardFields({}, { requireName: false }));
+});
+
+test('validateRegisterFields rejects a missing or blank name', () => {
+  assert.throws(() => validateRegisterFields({ email: 'a@b.com', password: 'longenough' }), /name is required/);
+  assert.throws(() => validateRegisterFields({ name: '  ', email: 'a@b.com', password: 'longenough' }), /name is required/);
+});
+
+test('validateRegisterFields rejects an invalid email', () => {
+  assert.throws(() => validateRegisterFields({ name: 'A', email: 'not-an-email', password: 'longenough' }), /email must be a valid/);
+});
+
+test('validateRegisterFields rejects a short password', () => {
+  assert.throws(() => validateRegisterFields({ name: 'A', email: 'a@b.com', password: 'short' }), /password must be at least 8/);
+});
+
+test('validateRegisterFields accepts a valid payload', () => {
+  assert.doesNotThrow(() => validateRegisterFields({ name: 'A', email: 'a@b.com', password: 'longenough' }));
+});
+
+test('validateLoginFields requires email and password', () => {
+  assert.throws(() => validateLoginFields({ password: 'x' }), /email is required/);
+  assert.throws(() => validateLoginFields({ email: 'a@b.com' }), /password is required/);
 });

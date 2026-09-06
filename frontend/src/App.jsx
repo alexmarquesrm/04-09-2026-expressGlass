@@ -1,9 +1,12 @@
 import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom';
+import { AuthProvider } from './context/AuthContext.jsx';
 import NavBar from './components/NavBar.jsx';
 import TasksPage from './pages/TasksPage.jsx';
 import AssistantPage from './pages/AssistantPage.jsx';
 import BoardsPage from './pages/BoardsPage.jsx';
 import BoardDetailPage from './pages/BoardDetailPage.jsx';
+import LoginPage from './pages/LoginPage.jsx';
+import RegisterPage from './pages/RegisterPage.jsx';
 
 function Layout() {
   const location = useLocation();
@@ -17,6 +20,8 @@ function Layout() {
         <Route path="/assistant" element={<AssistantPage />} />
         <Route path="/boards" element={<BoardsPage />} />
         <Route path="/boards/:id" element={<BoardDetailPage />} />
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="/register" element={<RegisterPage />} />
       </Routes>
     </main>
   );
@@ -25,7 +30,9 @@ function Layout() {
 export default function App() {
   return (
     <BrowserRouter>
-      <Layout />
+      <AuthProvider>
+        <Layout />
+      </AuthProvider>
     </BrowserRouter>
   );
 }

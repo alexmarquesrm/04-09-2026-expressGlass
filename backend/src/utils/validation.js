@@ -67,11 +67,36 @@ function validateBoardFields({ name }, { requireName }) {
   }
 }
 
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function validateRegisterFields({ name, email, password }) {
+  if (typeof name !== 'string' || !name.trim()) {
+    throw badRequest('name is required and must be a non-empty string');
+  }
+  if (typeof email !== 'string' || !EMAIL_PATTERN.test(email)) {
+    throw badRequest('email must be a valid email address');
+  }
+  if (typeof password !== 'string' || password.length < 8) {
+    throw badRequest('password must be at least 8 characters');
+  }
+}
+
+function validateLoginFields({ email, password }) {
+  if (typeof email !== 'string' || !email.trim()) {
+    throw badRequest('email is required');
+  }
+  if (typeof password !== 'string' || !password) {
+    throw badRequest('password is required');
+  }
+}
+
 module.exports = {
   parseId,
   validateTaskFields,
   validateChatMessage,
   validateConfirmationToken,
   validateBoardFields,
+  validateRegisterFields,
+  validateLoginFields,
   badRequest,
 };
