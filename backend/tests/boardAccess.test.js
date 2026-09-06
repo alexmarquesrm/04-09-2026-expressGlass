@@ -185,6 +185,57 @@ test('a card cannot be created into a column belonging to someone else\'s board'
   await outsider.agent.delete(`/api/boards/${theirs.body.id}`).expect(204);
 });
 
+test('card labels round-trip, and anything outside the palette is refused', async () => {
+  const created = await owner.agent.post('/api/boards').send({ name: 'Access Board L' }).expect(201);
+  const boardId = created.body.id;
+
+  const task = await owner.agent
+    .post(`/api/boards/${boardId}/tasks`)
+    .send({ title: 'Com etiquetas', labels: ['green', 'red'] })
+    .expect(201);
+  assert.deepStrictEqual(task.body.labels, ['green', 'red']);
+
+  const cleared = await owner.agent.patch(`/api/boards/${boardId}/tasks/${task.body.id}`).send({ labels: [] }).expect(200);
+  assert.deepStrictEqual(cleared.body.labels, []);
+
+  const bad = await owner.agent
+    .patch(`/api/boards/${boardId}/tasks/${task.body.id}`)
+    .send({ labels: ['#ff0000'] })
+    .expect(400);
+  assert.match(bad.body.error, /labels must be an array of/);
+
+  await owner.agent
+    .patch(`/api/boards/${boardId}/tasks/${task.body.id}`)
+    .send({ labels: ['green', 'green'] })
+    .expect(400);
+
+  // a card with no labels defaults to an empty array rather than null
+  const plain = await owner.agent.post(`/api/boards/${boardId}/tasks`).send({ title: 'Sem etiquetas' }).expect(201);
+  assert.deepStrictEqual(plain.body.labels, []);
+
+  await owner.agent.delete(`/api/boards/${boardId}`).expect(204);
+});
+
+test('a card description can be set and cleared through the API the modal uses', async () => {
+  const created = await owner.agent.post('/api/boards').send({ name: 'Access Board M' }).expect(201);
+  const boardId = created.body.id;
+  const task = await owner.agent.post(`/api/boards/${boardId}/tasks`).send({ title: 'Com descrição' }).expect(201);
+
+  const described = await owner.agent
+    .patch(`/api/boards/${boardId}/tasks/${task.body.id}`)
+    .send({ description: 'Detalhe do cartão' })
+    .expect(200);
+  assert.strictEqual(described.body.description, 'Detalhe do cartão');
+
+  const cleared = await owner.agent
+    .patch(`/api/boards/${boardId}/tasks/${task.body.id}`)
+    .send({ description: null })
+    .expect(200);
+  assert.strictEqual(cleared.body.description, null);
+
+  await owner.agent.delete(`/api/boards/${boardId}`).expect(204);
+});
+
 test('the chat assistant endpoints require authentication', async () => {
   await request(app).post('/api/chat').send({ message: 'olá' }).expect(401);
   await request(app).post('/api/chat/confirm').send({ confirmation_token: 'x', confirm: true }).expect(401);

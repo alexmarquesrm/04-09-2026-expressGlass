@@ -1,5 +1,8 @@
 const PRIORITIES = ['low', 'medium', 'high'];
 const STATUSES = ['pending', 'completed'];
+// Fixed palette rather than free-form colours, so a card can't carry arbitrary
+// strings that the UI then has to render.
+const LABELS = ['green', 'yellow', 'orange', 'red', 'purple', 'blue'];
 
 function badRequest(message) {
   const err = new Error(message);
@@ -15,7 +18,10 @@ function parseId(rawId, label = 'task') {
   return id;
 }
 
-function validateTaskFields({ title, description, status, priority, due_date, tags, position, assignee_id, column_id }, { requireTitle }) {
+function validateTaskFields(
+  { title, description, status, priority, due_date, tags, position, assignee_id, column_id, labels },
+  { requireTitle }
+) {
   if (requireTitle && (typeof title !== 'string' || !title.trim())) {
     throw badRequest('title is required and must be a non-empty string');
   }
@@ -47,6 +53,14 @@ function validateTaskFields({ title, description, status, priority, due_date, ta
   // explicit null is a mistake rather than a way to clear the field.
   if (column_id !== undefined && (!Number.isInteger(column_id) || column_id <= 0)) {
     throw badRequest('column_id must be a positive integer');
+  }
+  if (labels !== undefined) {
+    if (!Array.isArray(labels) || !labels.every((l) => LABELS.includes(l))) {
+      throw badRequest(`labels must be an array of: ${LABELS.join(', ')}`);
+    }
+    if (new Set(labels).size !== labels.length) {
+      throw badRequest('labels must not contain duplicates');
+    }
   }
 }
 

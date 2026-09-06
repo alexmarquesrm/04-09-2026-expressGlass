@@ -7,6 +7,7 @@ import { fetchUsers } from '../api/users.js';
 import { useAuth } from '../context/AuthContext.jsx';
 import ConfirmDialog from '../components/ConfirmDialog.jsx';
 import Avatar from '../components/Avatar.jsx';
+import TaskModal, { LABELS } from '../components/TaskModal.jsx';
 import { gradientFor } from '../utils/color.js';
 
 const PRIORITY_LABELS = { low: 'Baixa', medium: 'Média', high: 'Alta' };
@@ -46,6 +47,7 @@ export default function BoardDetailPage() {
   const [pendingDelete, setPendingDelete] = useState(null);
   const [pendingColumnDelete, setPendingColumnDelete] = useState(null);
   const [draggingId, setDraggingId] = useState(null);
+  const [openTaskId, setOpenTaskId] = useState(null);
   const [menuColumnId, setMenuColumnId] = useState(null);
   const [renamingColumnId, setRenamingColumnId] = useState(null);
   const [renameValue, setRenameValue] = useState('');
@@ -101,11 +103,11 @@ export default function BoardDetailPage() {
     }
   }
 
-  async function handleReassign(taskId, rawValue) {
-    const nextAssigneeId = rawValue ? Number(rawValue) : null;
+  async function handleSaveTask(taskId, fields) {
     try {
-      const updated = await updateBoardTask(id, taskId, { assignee_id: nextAssigneeId });
+      const updated = await updateBoardTask(id, taskId, fields);
       setTasks((prev) => prev.map((t) => (t.id === taskId ? updated : t)));
+      setOpenTaskId(null);
       setError(null);
     } catch (err) {
       setError(err.message);
@@ -191,6 +193,10 @@ export default function BoardDetailPage() {
   }
 
   async function moveTaskTo(taskId, targetColumnId, targetIndex) {
+    // Cleared here rather than relying on onDragEnd: moving a card to another
+    // column unmounts its DOM node mid-drag, so dragend never fires on it and
+    // the re-mounted card would stay stuck at drag opacity until a reload.
+    setDraggingId(null);
     const currentTasks = tasksRef.current;
     const dragged = currentTasks.find((t) => t.id === taskId);
     if (!dragged) return;
@@ -297,6 +303,7 @@ export default function BoardDetailPage() {
   const isOwner = board && board.my_role === 'owner';
   const memberIds = new Set(members.map((m) => m.user_id));
   const addableUsers = users.filter((u) => !memberIds.has(u.id));
+  const openTask = tasks.find((t) => t.id === openTaskId) || null;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }} onClick={() => setMenuColumnId(null)}>
@@ -479,60 +486,41 @@ export default function BoardDetailPage() {
                     }}
                     style={{ opacity: draggingId === task.id ? 0.4 : 1 }}
                   >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
-                      <span style={{ fontSize: 14, fontWeight: 600, lineHeight: 1.35 }}>{task.title}</span>
-                      <span className={`badge-priority ${task.priority}`} style={{ height: 'fit-content', whiteSpace: 'nowrap' }}>
-                        {PRIORITY_LABELS[task.priority] || task.priority}
-                      </span>
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                      {task.assignee_name ? (
-                        <Avatar name={task.assignee_name} size={22} />
-                      ) : (
-                        <span
-                          aria-hidden="true"
-                          style={{
-                            width: 22,
-                            height: 22,
-                            borderRadius: '50%',
-                            border: '1px dashed var(--color-border)',
-                            flexShrink: 0,
-                          }}
-                        />
+                    <button type="button" className="task-card-open" onClick={() => setOpenTaskId(task.id)}>
+                      {task.labels && task.labels.length > 0 && (
+                        <span style={{ display: 'flex', gap: 4 }}>
+                          {task.labels.map((key) => {
+                            const label = LABELS.find((l) => l.key === key);
+                            return label ? <span key={key} className="label-chip" style={{ background: label.color }} /> : null;
+                          })}
+                        </span>
                       )}
-                      <select
-                        className="card-select"
-                        style={{ flex: 1 }}
-                        aria-label="Responsável"
-                        value={task.assignee_id || ''}
-                        onChange={(e) => handleReassign(task.id, e.target.value)}
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        <option value="">Sem responsável</option>
-                        {members.map((m) => (
-                          <option key={m.user_id} value={m.user_id}>
-                            {m.name}
-                          </option>
-                        ))}
-                      </select>
-                      <select
-                        className="card-select"
-                        aria-label="Coluna"
-                        value={task.column_id}
-                        onChange={(e) => moveTaskTo(task.id, Number(e.target.value), Infinity)}
-                        onClick={(e) => e.stopPropagation()}
-                        style={{ maxWidth: 96 }}
-                      >
-                        {columns.map((c) => (
-                          <option key={c.id} value={c.id}>
-                            {c.name}
-                          </option>
-                        ))}
-                      </select>
-                      <button type="button" className="icon-btn danger" aria-label="Eliminar tarefa" onClick={() => setPendingDelete(task)}>
-                        ✕
-                      </button>
-                    </div>
+                      <span style={{ display: 'flex', justifyContent: 'space-between', gap: 8, width: '100%' }}>
+                        <span style={{ fontSize: 14, fontWeight: 600, lineHeight: 1.35 }}>{task.title}</span>
+                        <span className={`badge-priority ${task.priority}`} style={{ height: 'fit-content', whiteSpace: 'nowrap' }}>
+                          {PRIORITY_LABELS[task.priority] || task.priority}
+                        </span>
+                      </span>
+                      <span style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%' }}>
+                        {task.description && (
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--color-muted)" strokeWidth="2" strokeLinecap="round" aria-label="Tem descrição">
+                            <line x1="4" y1="7" x2="20" y2="7"></line>
+                            <line x1="4" y1="12" x2="20" y2="12"></line>
+                            <line x1="4" y1="17" x2="14" y2="17"></line>
+                          </svg>
+                        )}
+                        {task.due_date && (
+                          <span style={{ fontSize: 12, color: 'var(--color-muted)' }}>
+                            {new Date(task.due_date).toLocaleDateString('pt-PT', { month: 'short', day: 'numeric' })}
+                          </span>
+                        )}
+                        {task.assignee_name && (
+                          <span style={{ marginLeft: 'auto' }}>
+                            <Avatar name={task.assignee_name} size={22} />
+                          </span>
+                        )}
+                      </span>
+                    </button>
                   </div>
                 ))}
 
@@ -623,6 +611,20 @@ export default function BoardDetailPage() {
             </button>
           ))}
       </div>
+
+      {openTask && (
+        <TaskModal
+          task={openTask}
+          columns={columns}
+          members={members}
+          onSave={(fields) => handleSaveTask(openTask.id, fields)}
+          onDelete={(task) => {
+            setOpenTaskId(null);
+            setPendingDelete(task);
+          }}
+          onClose={() => setOpenTaskId(null)}
+        />
+      )}
 
       {pendingDelete && (
         <ConfirmDialog

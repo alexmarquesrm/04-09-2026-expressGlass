@@ -62,18 +62,19 @@ async function listBoardTasks(boardId) {
   return rows;
 }
 
-async function createBoardTask(boardId, { title, description, due_date, priority, tags, status, assignee_id, column_id }) {
+async function createBoardTask(boardId, { title, description, due_date, priority, tags, status, assignee_id, column_id, labels }) {
   await assertAssigneeIsBoardMember(boardId, assignee_id);
   const columnId = await resolveColumnId(boardId, column_id);
   try {
     const { rows } = await pool.query(
-      `INSERT INTO board_tasks (board_id, title, description, due_date, priority, tags, status, assignee_id, column_id, position)
+      `INSERT INTO board_tasks (board_id, title, description, due_date, priority, tags, status, assignee_id, column_id, labels, position)
        VALUES (
          $1, $2, $3, $4, COALESCE($5::task_priority, 'medium'), COALESCE($6::text[], '{}'), COALESCE($7::task_status, 'pending'), $8, $9,
+         COALESCE($10::text[], '{}'),
          (SELECT COALESCE(MAX(position), -10) + 10 FROM board_tasks WHERE column_id = $9)
        )
        RETURNING id`,
-      [boardId, title, description || null, due_date || null, priority || null, tags || null, status || null, assignee_id || null, columnId]
+      [boardId, title, description || null, due_date || null, priority || null, tags || null, status || null, assignee_id || null, columnId, labels || null]
     );
     return getBoardTask(boardId, rows[0].id);
   } catch (err) {
@@ -87,7 +88,7 @@ async function getBoardTask(boardId, id) {
 }
 
 async function updateBoardTask(boardId, id, fields) {
-  const allowed = ['title', 'description', 'status', 'priority', 'due_date', 'tags', 'position', 'assignee_id', 'column_id'];
+  const allowed = ['title', 'description', 'status', 'priority', 'due_date', 'tags', 'position', 'assignee_id', 'column_id', 'labels'];
   const keys = Object.keys(fields).filter((k) => allowed.includes(k));
   if (keys.length === 0) return getBoardTask(boardId, id);
 
