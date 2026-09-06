@@ -5,6 +5,7 @@ const tasksRoutes = require('./routes/tasks.routes');
 const chatRoutes = require('./routes/chat.routes');
 const boardsRoutes = require('./routes/boards.routes');
 const authRoutes = require('./routes/auth.routes');
+const usersRoutes = require('./routes/users.routes');
 const errorHandler = require('./middleware/errorHandler');
 
 if (!process.env.JWT_SECRET) {
@@ -24,6 +25,7 @@ app.use('/api/tasks', tasksRoutes);
 app.use('/api/chat', chatRoutes);
 app.use('/api/boards', boardsRoutes);
 app.use('/api/auth', authRoutes);
+app.use('/api/users', usersRoutes);
 
 app.use(errorHandler);
 

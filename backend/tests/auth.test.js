@@ -75,5 +75,6 @@ test('two concurrent createUser calls for the same email: one succeeds, the othe
 });
 
 test.after(async () => {
+  await pool.query("DELETE FROM users WHERE email LIKE 'test-%@example.com'");
   await pool.end();
 });

@@ -15,7 +15,7 @@ function parseId(rawId, label = 'task') {
   return id;
 }
 
-function validateTaskFields({ title, description, status, priority, due_date, tags, position }, { requireTitle }) {
+function validateTaskFields({ title, description, status, priority, due_date, tags, position, assignee_id }, { requireTitle }) {
   if (requireTitle && (typeof title !== 'string' || !title.trim())) {
     throw badRequest('title is required and must be a non-empty string');
   }
@@ -39,6 +39,9 @@ function validateTaskFields({ title, description, status, priority, due_date, ta
   }
   if (position !== undefined && (!Number.isInteger(position) || position < 0 || position > 1_000_000_000)) {
     throw badRequest('position must be a non-negative integer no greater than 1000000000');
+  }
+  if (assignee_id !== undefined && assignee_id !== null && (!Number.isInteger(assignee_id) || assignee_id <= 0)) {
+    throw badRequest('assignee_id must be a positive integer or null');
   }
 }
 

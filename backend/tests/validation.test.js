@@ -75,6 +75,17 @@ test('validateTaskFields accepts a valid position', () => {
   assert.doesNotThrow(() => validateTaskFields({ position: 20 }, { requireTitle: false }));
 });
 
+test('validateTaskFields rejects a non-integer or non-positive assignee_id', () => {
+  assert.throws(() => validateTaskFields({ assignee_id: 'abc' }, { requireTitle: false }), /assignee_id must be a positive integer/);
+  assert.throws(() => validateTaskFields({ assignee_id: 0 }, { requireTitle: false }), /assignee_id must be a positive integer/);
+  assert.throws(() => validateTaskFields({ assignee_id: -1 }, { requireTitle: false }), /assignee_id must be a positive integer/);
+});
+
+test('validateTaskFields accepts a null or valid assignee_id', () => {
+  assert.doesNotThrow(() => validateTaskFields({ assignee_id: null }, { requireTitle: false }));
+  assert.doesNotThrow(() => validateTaskFields({ assignee_id: 7 }, { requireTitle: false }));
+});
+
 test('validateChatMessage rejects empty or non-string messages', () => {
   assert.throws(() => validateChatMessage(''), /message is required/);
   assert.throws(() => validateChatMessage('   '), /message is required/);

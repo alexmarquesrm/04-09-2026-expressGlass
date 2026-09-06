@@ -1,0 +1,2 @@
+ALTER TABLE board_tasks
+  ADD COLUMN assignee_id INTEGER REFERENCES users(id) ON DELETE SET NULL;

@@ -385,3 +385,22 @@ The race condition is the clearest example yet in this project of "verify by act
 
 **AI mistake or oddity noticed?**
 Not exactly a mistake, but a near-miss worth recording: my own first-draft register logic (check-then-insert) is a textbook TOCTOU pattern, and I wrote it without immediately adding the DB-constraint-violation catch that should always accompany a uniqueness pre-check backed by a real DB constraint. The pre-check alone reads as "obviously correct" in isolation - it only fails under a timing window most manual testing will never hit, which is exactly why QA's job was to force it rather than just exercise the happy path.
+
+---
+
+### Entry 18 — S4, task assignment, and a test suite that was quietly littering its own database — 2026-09-06
+
+**Prompt (exact):**
+> next tasks
+
+**Result obtained (summary):**
+Built S4 (task assignment): `assignee_id` added to `board_tasks` (not the original core `tasks` table - assignment is a boards-era concept, and the core deliverable stays untouched), a new unauthenticated `GET /api/users` endpoint to populate an assignment dropdown, and `boardTasks.service.js` rewritten to LEFT JOIN `users` so responses carry both `assignee_id` and a display-ready `assignee_name`. While writing tests for this, noticed `backend/tests/auth.test.js` (from S3) had never once cleaned up the users it created across its six tests - every single test run permanently added rows to the dev database, and a live check turned up 14+ accumulated junk users (`Ana`, `Bea`, `Cat`... from repeated runs) sitting in a database meant to demo a small task app. Fixed it with the same `test.after` cleanup pattern `boards.test.js` already used, and purged the accumulated rows. Security and Review-QA (run in parallel, same as every prior slice) both independently flagged the same real issue from different angles: Security called out that `GET /api/users` hands out every registered user's *email address* to anyone, no login required - a meaningfully bigger disclosure than the app's existing "boards/tasks are open" gap, since email is specifically PII and the app already has a `requireAuth` middleware sitting unused. Review-QA separately caught a latent correctness bug: the new FK-violation handler in `boardTasks.service.js` blamed *any* Postgres foreign-key error on `assignee_id`, even though `board_tasks` has two FK columns (`board_id` and `assignee_id`) - not exploitable today (the controller's board-existence check runs first), but a real trap waiting for the next person who touches this code path without knowing that invariant holds.
+
+**Accepted / Corrected / Rejected:**
+Fixed both: dropped `email` from `GET /api/users`'s response (the assignment dropdown only ever needed `id`+`name`), and added an `err.constraint` check to `throwIfInvalidAssignee` so it only claims to be an assignee problem when the violated constraint's name actually says so. Also added a small dedicated test file for `users.service.js`, which had zero direct coverage until now.
+
+**Why:**
+The test-pollution bug is worth dwelling on because it's a different *category* of mistake than anything caught in S1-S3's reviews: those were all about the application being wrong under some input; this was about my own verification process being wrong in a way that wouldn't show up as a failing test - the tests all passed every time, they just also silently corrupted the environment they ran in. "The tests are green" and "the tests are clean" turned out to be two different claims, and only the second one is what actually keeps a shared dev database trustworthy over many sessions.
+
+**AI mistake or oddity noticed?**
+Yes - I wrote `auth.test.js` in the S3 session without giving its cleanup the same scrutiny `boards.test.js` already modeled two sessions earlier in the same file structure. The convention existed, right next to where I was working, and I didn't apply it - not because it was hard, but because focus during S3 was entirely on the auth logic under test, and "does this test file also delete what it made" wasn't part of the review checklist I was running against myself at the time. It took building a *second* feature that happened to also create users (S4's assignment tests) and noticing how many rows had piled up to surface it.

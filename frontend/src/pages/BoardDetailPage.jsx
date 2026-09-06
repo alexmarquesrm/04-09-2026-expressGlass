@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { fetchBoard, fetchBoardTasks, createBoardTask, updateBoardTask, deleteBoardTask } from '../api/boards.js';
+import { fetchUsers } from '../api/users.js';
 import ConfirmDialog from '../components/ConfirmDialog.jsx';
 
 const PRIORITY_LABELS = { low: 'Baixa', medium: 'Média', high: 'Alta' };
@@ -14,8 +15,10 @@ export default function BoardDetailPage() {
   const [board, setBoard] = useState(null);
   const [notFound, setNotFound] = useState(false);
   const [tasks, setTasks] = useState([]);
+  const [users, setUsers] = useState([]);
   const [title, setTitle] = useState('');
   const [priority, setPriority] = useState('medium');
+  const [assigneeId, setAssigneeId] = useState('');
   const [error, setError] = useState(null);
   const [pendingDelete, setPendingDelete] = useState(null);
   const [draggingId, setDraggingId] = useState(null);
@@ -32,16 +35,29 @@ export default function BoardDetailPage() {
         setNotFound(true);
       });
     fetchBoardTasks(id).then(setTasks).catch((err) => setError(err.message));
+    fetchUsers().then(setUsers).catch(() => setUsers([]));
   }, [id]);
 
   async function handleCreate(e) {
     e.preventDefault();
     if (!title.trim()) return;
     try {
-      const task = await createBoardTask(id, { title: title.trim(), priority });
+      const task = await createBoardTask(id, { title: title.trim(), priority, assignee_id: assigneeId ? Number(assigneeId) : null });
       setTasks((prev) => [...prev, task]);
       setTitle('');
       setPriority('medium');
+      setAssigneeId('');
+      setError(null);
+    } catch (err) {
+      setError(err.message);
+    }
+  }
+
+  async function handleReassign(taskId, rawValue) {
+    const nextAssigneeId = rawValue ? Number(rawValue) : null;
+    try {
+      const updated = await updateBoardTask(id, taskId, { assignee_id: nextAssigneeId });
+      setTasks((prev) => prev.map((t) => (t.id === taskId ? updated : t)));
       setError(null);
     } catch (err) {
       setError(err.message);
@@ -145,6 +161,14 @@ export default function BoardDetailPage() {
           <option value="medium">Prioridade média</option>
           <option value="high">Prioridade alta</option>
         </select>
+        <select className="field" value={assigneeId} onChange={(e) => setAssigneeId(e.target.value)}>
+          <option value="">Sem atribuição</option>
+          {users.map((u) => (
+            <option key={u.id} value={u.id}>
+              {u.name}
+            </option>
+          ))}
+        </select>
         <button className="btn-primary" type="submit" disabled={!title.trim()}>
           Adicionar
         </button>
@@ -202,6 +226,19 @@ export default function BoardDetailPage() {
                     <span style={{ fontSize: 14, fontWeight: 600 }}>{task.title}</span>
                     <span className={`badge-priority ${task.priority}`}>{PRIORITY_LABELS[task.priority] || task.priority}</span>
                   </div>
+                  <select
+                    className="field-sm"
+                    value={task.assignee_id || ''}
+                    onChange={(e) => handleReassign(task.id, e.target.value)}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <option value="">Sem atribuição</option>
+                    {users.map((u) => (
+                      <option key={u.id} value={u.id}>
+                        {u.name}
+                      </option>
+                    ))}
+                  </select>
                   <div style={{ display: 'flex', gap: 8 }}>
                     <button
                       type="button"

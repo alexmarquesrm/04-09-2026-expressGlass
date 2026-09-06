@@ -3,6 +3,11 @@ const assert = require('node:assert');
 const pool = require('../src/db/pool');
 const boardsService = require('../src/services/boards.service');
 const boardTasksService = require('../src/services/boardTasks.service');
+const authService = require('../src/services/auth.service');
+
+function uniqueEmail() {
+  return `boardtest-${Date.now()}-${Math.random().toString(36).slice(2)}@example.com`;
+}
 
 test('full board lifecycle: create, get, list, update, delete', async () => {
   const created = await boardsService.createBoard({ name: 'Integration test board' });
@@ -70,6 +75,63 @@ test('due_date on a board task round-trips without shifting a day', async () => 
   await boardsService.deleteBoard(board.id);
 });
 
+test('a board task can be assigned to a user, and the join returns the assignee name', async () => {
+  const board = await boardsService.createBoard({ name: 'Assignment test board' });
+  const user = await authService.createUser({ name: 'Assignee Person', email: uniqueEmail(), password: 'supersecret' });
+
+  const task = await boardTasksService.createBoardTask(board.id, { title: 'Assigned task', assignee_id: user.id });
+  assert.strictEqual(task.assignee_id, user.id);
+  assert.strictEqual(task.assignee_name, 'Assignee Person');
+
+  const fetched = await boardTasksService.getBoardTask(board.id, task.id);
+  assert.strictEqual(fetched.assignee_name, 'Assignee Person');
+
+  await boardsService.deleteBoard(board.id);
+  await pool.query('DELETE FROM users WHERE id = $1', [user.id]);
+});
+
+test('creating a task with a nonexistent assignee_id is rejected with a 400, not a raw DB error', async () => {
+  const board = await boardsService.createBoard({ name: 'Bad assignee test board' });
+  await assert.rejects(
+    () => boardTasksService.createBoardTask(board.id, { title: 'Bad assignee', assignee_id: 999999 }),
+    (err) => err.status === 400 && /does not reference an existing user/.test(err.message)
+  );
+  await boardsService.deleteBoard(board.id);
+});
+
+test('deleting an assigned user sets the task assignee_id to null instead of blocking the deletion', async () => {
+  const board = await boardsService.createBoard({ name: 'Assignee deletion test board' });
+  const user = await authService.createUser({ name: 'Soon Deleted', email: uniqueEmail(), password: 'supersecret' });
+  const task = await boardTasksService.createBoardTask(board.id, { title: 'Task with a doomed assignee', assignee_id: user.id });
+
+  await pool.query('DELETE FROM users WHERE id = $1', [user.id]);
+
+  const afterUserDeleted = await boardTasksService.getBoardTask(board.id, task.id);
+  assert.strictEqual(afterUserDeleted.assignee_id, null);
+  assert.strictEqual(afterUserDeleted.assignee_name, null);
+
+  await boardsService.deleteBoard(board.id);
+});
+
+test('reassigning a task via updateBoardTask updates the assignee join', async () => {
+  const board = await boardsService.createBoard({ name: 'Reassignment test board' });
+  const userA = await authService.createUser({ name: 'User A', email: uniqueEmail(), password: 'supersecret' });
+  const userB = await authService.createUser({ name: 'User B', email: uniqueEmail(), password: 'supersecret' });
+  const task = await boardTasksService.createBoardTask(board.id, { title: 'Reassign me', assignee_id: userA.id });
+
+  const reassigned = await boardTasksService.updateBoardTask(board.id, task.id, { assignee_id: userB.id });
+  assert.strictEqual(reassigned.assignee_id, userB.id);
+  assert.strictEqual(reassigned.assignee_name, 'User B');
+
+  const unassigned = await boardTasksService.updateBoardTask(board.id, task.id, { assignee_id: null });
+  assert.strictEqual(unassigned.assignee_id, null);
+  assert.strictEqual(unassigned.assignee_name, null);
+
+  await boardsService.deleteBoard(board.id);
+  await pool.query('DELETE FROM users WHERE id = ANY($1)', [[userA.id, userB.id]]);
+});
+
 test.after(async () => {
+  await pool.query("DELETE FROM users WHERE email LIKE 'boardtest-%@example.com'");
   await pool.end();
 });
