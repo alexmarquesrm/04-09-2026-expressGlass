@@ -52,7 +52,13 @@ jobs:
           node-version: 20
           cache: npm
           cache-dependency-path: frontend/package-lock.json
+      # Not `npm ci`: the committed lockfile is generated inside the project's
+      # Alpine (musl) dev container, so it only pins the musl build of Rollup's
+      # native binary. `npm ci` on this (glibc) runner can't find
+      # @rollup/rollup-linux-x64-gnu (npm/cli#4828) and fails outright. Dropping
+      # the lockfile here lets npm resolve the correct binary for this runner
+      # without touching the lockfile local dev actually depends on.
       - working-directory: frontend
-        run: npm ci
+        run: rm -f package-lock.json && npm install
       - working-directory: frontend
         run: npm test
